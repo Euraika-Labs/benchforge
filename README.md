@@ -1,10 +1,10 @@
-# anubissbe
+# BenchForge
 
-Community-ready public repository for the `anubissbe` project under Euraika Labs.
+BenchForge is a local and cloud LLM benchmarking tool under Euraika Labs.
 
 ## Status
 
-This repository has been initialized with community health files so contributors have clear expectations before project code is added.
+This repository has been initialized with community health files so contributors have clear expectations as the project is prepared for public collaboration.
 
 ## Repository Standards
 
