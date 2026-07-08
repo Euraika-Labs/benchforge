@@ -500,7 +500,7 @@ export default function App() {
       case 'settings':
         return <SettingsPage busy={busy} targets={targets} adapters={adapters} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
       default:
-        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
+        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} busy={busy} setBusy={setBusy} refresh={refresh} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
     }
   }, [page, targets, adapters, packs, packDiagnostics, checks, diagnostics, results, runJobs, downloadJobs, serverJobs, artifacts, selectedRunId, selectedResult, artifactText, runBuilderIntent, targetRepairIntent, targetSetupIntent, resultsScopeIntent, busy]);
 
@@ -531,7 +531,7 @@ export default function App() {
   );
 }
 
-function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, setPage, setMessage, openRunBuilder, openTargetRepair, openTargetSetup }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
+function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, busy, setBusy, refresh, setPage, setMessage, openRunBuilder, openTargetRepair, openTargetSetup }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; busy: boolean; setBusy: (busy: boolean) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
   const errors = checks.filter(c => c.status === 'error').length;
   const warnings = checks.filter(c => c.status === 'warn').length;
   const passed = results.filter(result => result.status === 'passed').length;
@@ -567,7 +567,10 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const comparisonNeedsPricing = comparisonReady && Boolean(pricingRepairTargetIds.length) && recommendedTargetIds.length < 2;
   const recommendedComparisonPack = useMemo(() => recommendedComparisonPackId(packs), [packs]);
   const hasReliabilityPack = packs.some(pack => pack.id === 'llm-reliability');
+  const activeRunInProgress = runJobs.some(isJobActive);
   const primaryBenchmarkActionLabel = comparisonNeedsPricing ? 'Add cloud pricing' : comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
+  const primaryBenchmarkActionDisabled = busy || (comparisonReady && !comparisonNeedsPricing && activeRunInProgress);
+  const reliabilityComparisonDisabled = busy || activeRunInProgress || !comparisonReady || comparisonNeedsPricing || !hasReliabilityPack;
   function openLocalRuntimeDetection() {
     openTargetSetup({ code: 'local_runtime_detect' });
     setMessage('Detecting local runtimes from Dashboard');
@@ -575,10 +578,53 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   function openCloudTargetSetup() {
     openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
   }
+  async function runDashboardComparison(benchmarkPackId: string) {
+    const intent = localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId);
+    setBusy(true);
+    try {
+      setMessage(`Validating ${intent.targetIds.length} target(s) before starting ${benchmarkPackLabel(benchmarkPackId)}`);
+      const validationResults = await Promise.all(intent.targetIds.map(id => validateTarget(id)));
+      await refresh();
+      const blockers = validationResults.filter(result => result.status === 'error');
+      if (blockers.length) {
+        openTargetRepair({ targetIds: blockers.map(blocker => blocker.targetId), code: validationRepairCode(blockers[0]) });
+        setMessage(`Run blocked: ${formatValidationCodeCounts(blockers)}. Fix validation errors before starting the comparison.`);
+        return;
+      }
+      const warningNote = validationResults.some(result => result.status !== 'ok') ? `; warnings: ${formatValidationCodeCounts(validationResults.filter(result => result.status !== 'ok'))}` : '';
+      setMessage(`Starting ${benchmarkPackLabel(benchmarkPackId)} local/cloud comparison with ${intent.targetIds.length} target(s), ${intent.repetitions} repetitions, ${intent.warmupRuns} warmup, ${formatCost(intent.maxCostUsd ?? defaultComparisonMaxCostUsd)} cap${warningNote}`);
+      const job = await startRunJob(
+        intent.targetIds,
+        false,
+        intent.benchmarkPackId ?? benchmarkPackId,
+        intent.repetitions ?? 3,
+        intent.warmupRuns ?? 1,
+        intent.concurrency ?? 1,
+        intent.maxCostUsd ?? defaultComparisonMaxCostUsd,
+      );
+      await refresh();
+      if (isJobActive(job)) {
+        setPage('runs');
+        setMessage(`Started local/cloud comparison job ${job.id.slice(0, 8)} with ${job.total} planned run(s)`);
+        return;
+      }
+      if (job.results.length || job.status === 'completed') {
+        setPage('results');
+        setMessage(`${job.completed}/${job.total} local/cloud benchmark task runs completed`);
+        return;
+      }
+      setPage('runs');
+      setMessage(job.message || `Local/cloud comparison job ${job.id.slice(0, 8)} finished without stored results`);
+    } catch (error) {
+      setMessage(benchmarkRunFailureMessage(error));
+      openRunBuilder(intent);
+    } finally {
+      setBusy(false);
+    }
+  }
   function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
     if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && recommendedTargetIds.length >= 2) {
-      openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId));
-      setMessage(`Run Builder ready for local/cloud comparison: ${recommendedTargetIds.length} target(s), ${benchmarkPackLabel(benchmarkPackId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
+      void runDashboardComparison(benchmarkPackId);
       return;
     }
     if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && pricingRepairTargetIds.length) {
@@ -630,8 +676,8 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         <button onClick={openLocalRuntimeDetection}><Search size={14} />Detect runtime</button>
         <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
         <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
-        <button onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{primaryBenchmarkActionLabel}</button>
-        <button disabled={!comparisonReady || comparisonNeedsPricing || !hasReliabilityPack} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
+        <button disabled={primaryBenchmarkActionDisabled} title={activeRunInProgress && comparisonReady ? 'A benchmark job is already running' : undefined} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
+        <button disabled={reliabilityComparisonDisabled} title={activeRunInProgress ? 'A benchmark job is already running' : undefined} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
         <button disabled={comparisonResultCheck.status !== 'ok'} onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
       </div>
     </div>
