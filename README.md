@@ -206,7 +206,7 @@ In the desktop app, open Settings, save `HF_TOKEN` if the model is gated, then u
 
 1. Add and validate a local OpenAI-compatible target, such as Ollama, LM Studio, or `llama.cpp`.
 2. Add and validate a cloud target, such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Gemini.
-3. On the Dashboard, click **Run model comparison** to validate and run the recommended local/cloud pair with the capped default pack. Use the Run Builder **Local + cloud** shortcut when you want to include every comparable local target and priced cloud target. Manual local/cloud prompt selections also move untouched quick defaults to 3 repetitions, 1 warmup, and the default cap. Shortcuts prefer cloud targets with input/output pricing so capped runs can estimate spend.
+3. On the Dashboard, click **Run model comparison** to validate and run the recommended local/cloud pair with the capped default pack. Use Dashboard **Compare all** or the Run Builder **Local + cloud** shortcut when you want to include every comparable local target and priced cloud target. Manual local/cloud prompt selections also move untouched quick defaults to 3 repetitions, 1 warmup, and the default cap. Shortcuts prefer cloud targets with input/output pricing so capped runs can estimate spend.
 4. Compare pass rate, score, p95 latency, throughput, cost, served model identity, and evidence warnings in Results.
 
 ## Configure Secrets

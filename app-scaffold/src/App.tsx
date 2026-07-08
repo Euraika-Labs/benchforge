@@ -575,8 +575,15 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const primaryBenchmarkActionTitle = activeRunInProgress && comparisonReady
     ? 'A benchmark job is already running'
     : comparisonReady && !comparisonNeedsPricing && allComparableTargetIds.length > recommendedTargetIds.length
-      ? `Runs the recommended pair: ${previewList(recommendedTargetIds)}. Use Run Builder > Local + cloud for all ${allComparableTargetIds.length} comparable targets.`
+      ? `Runs the recommended pair: ${previewList(recommendedTargetIds)}. Use Compare all for all ${allComparableTargetIds.length} comparable targets.`
       : undefined;
+  const compareAllAvailable = comparisonReady && !comparisonNeedsPricing && allComparableTargetIds.length > recommendedTargetIds.length;
+  const compareAllDisabled = busy || activeRunInProgress || !compareAllAvailable;
+  const compareAllTitle = activeRunInProgress
+    ? 'A benchmark job is already running'
+    : compareAllAvailable
+      ? `Open Run Builder with all ${allComparableTargetIds.length} comparable local/priced cloud targets`
+      : 'Add more comparable local or priced cloud targets before comparing all models';
   const reliabilityComparisonDisabled = busy || activeRunInProgress || !comparisonReady || comparisonNeedsPricing || !hasReliabilityPack;
   function openLocalRuntimeDetection() {
     openTargetSetup({ code: 'local_runtime_detect' });
@@ -659,6 +666,20 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     }
     setPage(nextBenchmarkStep.command ? nextBenchmarkStepPage(nextBenchmarkStep) : 'doctor');
   }
+  function openAllComparisonRun() {
+    if (!compareAllAvailable) {
+      if (pricingRepairTargetIds.length) {
+        openTargetRepair({ targetIds: pricingRepairTargetIds, code: 'pricing_assumption' });
+        setMessage(`Add input/output pricing before comparing every local/cloud target: ${previewList(pricingRepairTargetIds)}`);
+        return;
+      }
+      setMessage('Add at least one local model and one priced cloud model before comparing every target');
+      return;
+    }
+    const intent = localCloudRunBuilderIntent(allComparableTargetIds, recommendedComparisonPack);
+    openRunBuilder(intent);
+    setMessage(`Run Builder ready to compare all ${allComparableTargetIds.length} comparable local/cloud target(s) with ${benchmarkPackLabel(recommendedComparisonPack)}, 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap`);
+  }
   return <section><h1>Dashboard</h1><div className="grid">
     <Card title="Targets" value={targets.length} note="configured" />
     <Card title="Benchmark packs" value={packs.length} note="available" />
@@ -685,6 +706,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
         <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
         <button disabled={primaryBenchmarkActionDisabled} title={primaryBenchmarkActionTitle} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
+        <button disabled={compareAllDisabled} title={compareAllTitle} onClick={openAllComparisonRun}><ClipboardCheck size={14} />Compare all</button>
         <button disabled={reliabilityComparisonDisabled} title={activeRunInProgress ? 'A benchmark job is already running' : undefined} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
         <button disabled={comparisonResultCheck.status !== 'ok'} onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
       </div>
