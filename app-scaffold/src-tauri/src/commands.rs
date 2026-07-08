@@ -12498,8 +12498,13 @@ fn run_local_runtime_handoff_smoke(server_base_url: &str) -> Result<serde_json::
             for row in &finished.results {
                 if row.status != "passed" || row.score != Some(1.0) {
                     return Err(format!(
-                        "local_runtime_handoff_failed: {} returned status {} score {:?}",
-                        row.task_id, row.status, row.score
+                        "local_runtime_handoff_failed: {} returned status {} score {:?} error_code {:?} error_message {:?} http_status {:?}",
+                        row.task_id,
+                        row.status,
+                        row.score,
+                        row.error_code,
+                        row.error_message,
+                        row.http_status
                     ));
                 }
                 if row.http_status != Some(200.0) {
