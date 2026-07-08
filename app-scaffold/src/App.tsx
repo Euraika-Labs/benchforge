@@ -154,6 +154,7 @@ interface LocalCloudRunReadiness {
   facts: string[];
   notes: string[];
   recommendedCostCapUsd?: number;
+  pricingRepairTargetIds: string[];
 }
 
 interface BenchmarkPackOption {
@@ -3279,6 +3280,14 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
     openTargetRepair({ targetIds: [blocker.targetId], code });
     setMessage(`${errorCategoryRepairHint(code)} for ${blocker.targetId}`);
   }
+  function repairRunPricingBlockers(targetIds: string[]) {
+    if (!targetIds.length) {
+      setMessage('No unpriced selected target found to repair');
+      return;
+    }
+    openTargetRepair({ targetIds, code: 'pricing_assumption' });
+    setMessage(`Add input/output pricing before running a capped local/cloud comparison: ${previewList(targetIds)}`);
+  }
   async function cancelRun(id: string) {
     setMessage(`Cancelling run job ${id.slice(0, 8)}`);
     try {
@@ -3439,7 +3448,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
       })}</div>}
       {selectedPack?.heavy ? <p className="muted">Selected pack is marked heavy and may take longer or require external tooling.</p> : null}
       {selectedPack ? <PackRunReadiness pack={selectedPack} docker={docker} /> : null}
-      {comparisonRunReadiness ? <LocalCloudRunReadinessPanel readiness={comparisonRunReadiness} onSetCostCap={applyRecommendedCostCap} /> : null}
+      {comparisonRunReadiness ? <LocalCloudRunReadinessPanel readiness={comparisonRunReadiness} onSetCostCap={applyRecommendedCostCap} onRepairPricing={repairRunPricingBlockers} /> : null}
       {runValidationBlockers.length ? <RunValidationBlockerPanel blockers={runValidationBlockers} targets={targets} onRepair={repairRunValidationBlocker} /> : null}
       {repetitionConfidenceWarning ? <div className="preflight-box warn"><strong>Repetition Confidence</strong><p>{repetitionConfidenceWarning}</p></div> : null}
       {runScaleWarning ? <div className="preflight-box warn"><strong>Large Run</strong><p>{runScaleWarning}</p></div> : null}
@@ -3506,13 +3515,16 @@ function PackRunReadiness({ pack, docker }: { pack: BenchmarkPack; docker: boole
   </div>;
 }
 
-function LocalCloudRunReadinessPanel({ readiness, onSetCostCap }: { readiness: LocalCloudRunReadiness; onSetCostCap?: (value: number) => void }) {
+function LocalCloudRunReadinessPanel({ readiness, onSetCostCap, onRepairPricing }: { readiness: LocalCloudRunReadiness; onSetCostCap?: (value: number) => void; onRepairPricing?: (targetIds: string[]) => void }) {
   return <div className={`preflight-box ${readiness.tone}`}>
     <strong>Comparison Readiness</strong>
     <p>{readiness.headline}</p>
     <div className="mini-grid">{readiness.facts.map(fact => <span key={fact}>{fact}</span>)}</div>
     {readiness.notes.map(note => <p key={note}>{note}</p>)}
-    {readiness.recommendedCostCapUsd != null && onSetCostCap ? <div className="row-actions"><button onClick={() => onSetCostCap(readiness.recommendedCostCapUsd!)}><ShieldCheck size={14} />Set {formatCost(readiness.recommendedCostCapUsd)} cap</button></div> : null}
+    {(readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing) ? <div className="row-actions">
+      {readiness.recommendedCostCapUsd != null && onSetCostCap ? <button onClick={() => onSetCostCap(readiness.recommendedCostCapUsd!)}><ShieldCheck size={14} />Set {formatCost(readiness.recommendedCostCapUsd)} cap</button> : null}
+      {readiness.pricingRepairTargetIds.length && onRepairPricing ? <button title={errorCategoryRepairHint('pricing_assumption')} onClick={() => onRepairPricing(readiness.pricingRepairTargetIds)}><Pencil size={14} />Add pricing</button> : null}
+    </div> : null}
   </div>;
 }
 
@@ -3569,7 +3581,8 @@ function localCloudRunReadiness({
   const hasBoth = hasLocal && hasCloud;
   const recommendedCostCapUsd = hasCloud && maxCostUsd == null ? defaultComparisonMaxCostUsd : undefined;
   const pricingCoverageKnown = Boolean(estimate);
-  const missingPricingCount = estimate?.unpricedTargets.length ?? 0;
+  const pricingRepairTargetIds = estimate?.unpricedTargets ?? [];
+  const missingPricingCount = pricingRepairTargetIds.length;
   const minComparisonTasks = 3;
   const enoughSelectedTasks = selectedTaskCount >= minComparisonTasks;
   const isPromptPack = pack.taskTypes.includes('prompt');
@@ -3652,6 +3665,7 @@ function localCloudRunReadiness({
     facts,
     notes,
     recommendedCostCapUsd,
+    pricingRepairTargetIds,
   };
 }
 
