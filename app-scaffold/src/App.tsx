@@ -1316,6 +1316,22 @@ function adapterModelPresets(adapter?: Adapter): ModelPreset[] {
   });
 }
 
+function matchingPricedModelPreset(adapter: Adapter | undefined, modelValue: string) {
+  const normalizedModel = modelValue.trim().toLowerCase();
+  if (!normalizedModel) {
+    return undefined;
+  }
+  return adapterModelPresets(adapter).find(preset => {
+    if (preset.model.trim().toLowerCase() !== normalizedModel) {
+      return false;
+    }
+    return preset.inputPrice != null
+      || preset.outputPrice != null
+      || preset.cacheReadPrice != null
+      || preset.cacheWritePrice != null;
+  });
+}
+
 function numberFromUnknown(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
@@ -1762,13 +1778,25 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         return;
       }
       const config = exported.config ?? {};
+      const modelValue = formValueFromUnknown(config.model);
+      const inputPriceValue = formValueFromUnknown(config.input_price_usd_per_million_tokens);
+      const outputPriceValue = formValueFromUnknown(config.output_price_usd_per_million_tokens);
+      const cacheReadPriceValue = formValueFromUnknown(config.cache_read_price_usd_per_million_tokens, formValueFromUnknown(config.cached_input_price_usd_per_million_tokens));
+      const cacheWritePriceValue = formValueFromUnknown(config.cache_write_price_usd_per_million_tokens, formValueFromUnknown(config.cache_creation_price_usd_per_million_tokens));
+      const matchingPreset = matchingPricedModelPreset(adapter, modelValue);
+      const matchedPresetFillsMissingPricing = Boolean(matchingPreset && (
+        (!inputPriceValue && matchingPreset.inputPrice != null)
+        || (!outputPriceValue && matchingPreset.outputPrice != null)
+        || (!cacheReadPriceValue && matchingPreset.cacheReadPrice != null)
+        || (!cacheWritePriceValue && matchingPreset.cacheWritePrice != null)
+      ));
       setEditingTargetId(exported.id);
       setEditingTargetHadValidationError(target.validationStatus === 'error');
       setEditingTargetPreserveApiKeyRef(config.api_key_keychain === '[REDACTED]');
       setEditingTargetPreserveApiKeyEnvRef(config.api_key_env === '[REDACTED]');
       setAdapterId(adapter.id);
       setTargetName(exported.name);
-      setModel(formValueFromUnknown(config.model));
+      setModel(modelValue);
       setBaseUrl(formValueFromUnknown(config.base_url, adapter.defaultBaseUrl ?? ''));
       setApiKey('');
       setApiKeyEnv(config.api_key_env === '[REDACTED]' ? '' : formValueFromUnknown(config.api_key_env));
@@ -1778,16 +1806,17 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       setSeed(formValueFromUnknown(config.seed));
       setTimeoutSeconds(formValueFromUnknown(config.timeout_seconds, '120'));
       setRetryCount(formValueFromUnknown(config.retry_count, '1'));
-      setInputPrice(formValueFromUnknown(config.input_price_usd_per_million_tokens));
-      setOutputPrice(formValueFromUnknown(config.output_price_usd_per_million_tokens));
-      setCacheReadPrice(formValueFromUnknown(config.cache_read_price_usd_per_million_tokens, formValueFromUnknown(config.cached_input_price_usd_per_million_tokens)));
-      setCacheWritePrice(formValueFromUnknown(config.cache_write_price_usd_per_million_tokens, formValueFromUnknown(config.cache_creation_price_usd_per_million_tokens)));
-      setModelPresetId('custom');
-      setCloudModelQuery('');
+      setInputPrice(inputPriceValue || (matchingPreset?.inputPrice != null ? String(matchingPreset.inputPrice) : ''));
+      setOutputPrice(outputPriceValue || (matchingPreset?.outputPrice != null ? String(matchingPreset.outputPrice) : ''));
+      setCacheReadPrice(cacheReadPriceValue || (matchingPreset?.cacheReadPrice != null ? String(matchingPreset.cacheReadPrice) : ''));
+      setCacheWritePrice(cacheWritePriceValue || (matchingPreset?.cacheWritePrice != null ? String(matchingPreset.cacheWritePrice) : ''));
+      setModelPresetId(matchedPresetFillsMissingPricing && matchingPreset ? matchingPreset.id : 'custom');
+      setCloudModelQuery(matchedPresetFillsMissingPricing && matchingPreset ? matchingPreset.model : '');
       setCloudModels([]);
       setSelectedCloudModel(null);
       setTargetAdvancedOpen(true);
-      setMessage(`Loaded ${exported.name} for editing`);
+      const pricingNote = matchedPresetFillsMissingPricing && matchingPreset ? `; prefilled missing pricing from ${matchingPreset.label}` : '';
+      setMessage(`Loaded ${exported.name} for editing${pricingNote}`);
     } catch (error) {
       setMessage(String(error));
     } finally {
