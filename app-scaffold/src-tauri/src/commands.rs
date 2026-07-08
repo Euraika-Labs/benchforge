@@ -9042,24 +9042,42 @@ fn next_benchmark_step_check(
             0,
             "add and validate one local model target",
         );
-        (
-            "warn",
-            detail,
-            "Use Settings > Hugging Face Local Model for GGUF/llama.cpp, or Targets > Local Runtimes > Detect for an existing local server.".to_string(),
-            "Settings > Hugging Face Local Model",
-        )
+        if failing_local_targets > 0 {
+            (
+                "warn",
+                detail,
+                "Open Targets, edit or revalidate the failing local target; for endpoint errors, start the local runtime or use Settings > Hugging Face Local Model to restart/register it.".to_string(),
+                "Targets > Repair local target",
+            )
+        } else {
+            (
+                "warn",
+                detail,
+                "Use Settings > Hugging Face Local Model for GGUF/llama.cpp, or Targets > Local Runtimes > Detect for an existing local server.".to_string(),
+                "Settings > Hugging Face Local Model",
+            )
+        }
     } else if cloud_targets == 0 {
         let detail = local_cloud_readiness_missing_detail(
             0,
             failing_cloud_targets,
             "add and validate one cloud model target",
         );
-        (
-            "warn",
-            detail,
-            "Use Targets > Model Target, save the provider key in Keychain, and validate with a tiny completion probe.".to_string(),
-            "Targets > Model Target",
-        )
+        if failing_cloud_targets > 0 {
+            (
+                "warn",
+                detail,
+                "Open Targets, fix the failing cloud target's key, endpoint, or model name, then revalidate with a tiny completion probe.".to_string(),
+                "Targets > Repair cloud target",
+            )
+        } else {
+            (
+                "warn",
+                detail,
+                "Use Targets > Model Target, save the provider key in Keychain, and validate with a tiny completion probe.".to_string(),
+                "Targets > Model Target",
+            )
+        }
     } else if let Some(evidence) = comparison_evidence {
         if local_cloud_evidence_status(evidence) == "ok" {
             (
@@ -21158,6 +21176,62 @@ mod tests {
                 .unwrap_or_default()
                 .contains("ready local model target")
         );
+        assert_eq!(
+            doctor_check_command(&checks, "benchmark-next-step"),
+            Some("Targets > Repair local target")
+        );
+        assert!(doctor_check_remediation(&checks, "benchmark-next-step")
+            .unwrap_or_default()
+            .contains("revalidate the failing local target"));
+    }
+
+    #[test]
+    fn doctor_readiness_routes_failed_cloud_target_to_repair() {
+        let local = target_record(
+            "local-llama",
+            "Local llama.cpp",
+            "direct_model",
+            "llama-cpp-openai",
+            serde_json::json!({
+                "base_url": "http://127.0.0.1:8080/v1",
+                "model": "local-model"
+            }),
+        );
+        let mut cloud = target_record(
+            "cloud-openrouter",
+            "OpenRouter",
+            "direct_model",
+            "openrouter",
+            serde_json::json!({
+                "base_url": "https://openrouter.ai/api/v1",
+                "model": "openai/gpt-4.1-mini"
+            }),
+        );
+        cloud.validation_status = Some("error".into());
+        cloud.validation_detail = Some("auth: provider rejected API key".into());
+        cloud.validation_checked_at = Some("2026-07-07T12:00:00Z".into());
+
+        let checks = benchmark_readiness_doctor_checks(
+            &[local, cloud],
+            &[],
+            runner::list_benchmark_packs(),
+            adapters::load_builtin_adapters(),
+        );
+
+        assert_eq!(
+            doctor_check_status(&checks, "benchmark-target-cloud"),
+            Some("warn")
+        );
+        assert!(doctor_check_detail(&checks, "benchmark-target-cloud")
+            .unwrap_or_default()
+            .contains("last validation failed"));
+        assert_eq!(
+            doctor_check_command(&checks, "benchmark-next-step"),
+            Some("Targets > Repair cloud target")
+        );
+        assert!(doctor_check_remediation(&checks, "benchmark-next-step")
+            .unwrap_or_default()
+            .contains("fix the failing cloud target"));
     }
 
     #[test]

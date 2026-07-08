@@ -4304,6 +4304,12 @@ function nextBenchmarkStepLabel(check: DoctorCheck) {
   if (check.command.startsWith('Settings')) {
     return 'Set up local';
   }
+  if (check.command.startsWith('Targets > Repair local')) {
+    return 'Repair local';
+  }
+  if (check.command.startsWith('Targets > Repair cloud')) {
+    return 'Repair cloud';
+  }
   if (check.command.startsWith('Targets')) {
     return 'Set up cloud';
   }
@@ -4359,10 +4365,12 @@ function doctorAction(check: DoctorCheck, actionBusy: string, installLocalModelT
     return <button onClick={() => setPage('targets')}><Search size={14} />Detect</button>;
   }
   if (check.id === 'benchmark-target-local') {
-    return <button onClick={() => setPage('settings')}><Settings size={14} />Local</button>;
+    const repair = check.detail.includes('last validation failed');
+    return <button onClick={() => setPage(repair ? 'targets' : 'settings')}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Local'}</button>;
   }
   if (check.id === 'benchmark-target-cloud') {
-    return <button onClick={() => setPage('targets')}><Settings size={14} />Cloud</button>;
+    const repair = check.detail.includes('last validation failed');
+    return <button onClick={() => setPage('targets')}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Cloud'}</button>;
   }
   if (check.id === 'benchmark-local-cloud-compare') {
     return <button onClick={() => openBenchmarkStep(check)}><Play size={14} />Runs</button>;
