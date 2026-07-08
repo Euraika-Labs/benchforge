@@ -8072,6 +8072,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
   const [activeDownloadJobId, setActiveDownloadJobId] = useState('');
   const [serverJobs, setServerJobs] = useState<HuggingFaceServerJob[]>([]);
   const [activeServerJobId, setActiveServerJobId] = useState('');
+  const [localAdvancedOpen, setLocalAdvancedOpen] = useState(false);
   const [autoStartAfterDownload, setAutoStartAfterDownload] = useState(true);
   const [autoBenchmarkAfterStart, setAutoBenchmarkAfterStart] = useState(true);
   const [autoCompareAfterStart, setAutoCompareAfterStart] = useState(true);
@@ -8907,28 +8908,33 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
         <label>HF token <input type="password" value={token} onChange={event => setToken(event.target.value)} placeholder="hf_..." /></label>
         <button disabled={busy || !token.trim()} onClick={saveToken}>Save token</button>
         <label>Repo ID <input value={repoId} onChange={event => { setRepoId(event.target.value); setModelFileDetails([]); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }} placeholder="org/model-GGUF" /></label>
-        <label>Revision <input value={revision} onChange={event => { setRevision(event.target.value); setModelFileDetails([]); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }} placeholder="main, tag, branch, or commit" /></label>
         <label>GGUF file {modelFileDetails.length ? <select value={filename} onChange={event => { setFilename(event.target.value); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }}><option value="">Auto-select</option>{modelFileDetails.filter(detail => isRunnableGgufFile(detail.file)).map(detail => <option key={detail.file} value={detail.file}>{detail.file}{detail.sizeBytes ? ` (${formatBytes(detail.sizeBytes)})` : ''}</option>)}</select> : <input value={filename} onChange={event => { setFilename(event.target.value); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }} placeholder="optional, e.g. model-q4_k_m.gguf" />}</label>
         <button disabled={busy || modelFileBusy || !repoId.trim()} onClick={() => inspectModelFiles().catch(error => setMessage(String(error)))}><Search size={16} />{modelFileBusy ? 'Resolving' : 'Files'}</button>
-        <label className="toggle"><input type="checkbox" checked={autoStartAfterDownload} onChange={event => setAutoStartAfterDownload(event.target.checked)} />Start after download</label>
-        <label className="toggle"><input type="checkbox" checked={autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkAfterStart(event.target.checked)} />Run benchmark after start</label>
-        <label className="toggle" title={selectablePricedCloudTargetCount ? 'Include the first priced cloud target in the automatic benchmark' : selectableCloudTargetCount ? 'Add input/output pricing to a cloud target before automatic local/cloud comparison' : 'Add a selectable cloud target before automatic local/cloud comparison'}>
-          <input
-            type="checkbox"
-            checked={autoCompareAfterStart && selectablePricedCloudTargetCount > 0}
-            disabled={!autoBenchmarkAfterStart || !selectablePricedCloudTargetCount}
-            onChange={event => setAutoCompareAfterStart(event.target.checked)}
-          />
-          Compare with cloud target
-        </label>
-        <label>Benchmark pack <select value={autoBenchmarkPackId} disabled={!autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
         <button disabled={busy || activeDownloadInProgress || activeServerStartInProgress || !repoId.trim()} onClick={downloadModel}>{downloadFailed ? <RotateCcw size={16} /> : <Download size={16} />}{hfDownloadActionLabel(downloadFailed, autoStartAfterDownload, autoBenchmarkAfterStart, autoCompareReady && autoCompareAfterStart)}</button>
-        <label>Port <input type="number" min="1024" max="65535" step="1" value={port} onChange={event => setPort(Number(event.target.value))} /></label>
-        <label>Context <input type="number" min="128" max="131072" step="1" value={context} onChange={event => { setContext(Number(event.target.value)); setPreflight(null); }} /></label>
-        <button disabled={busy || preflightBusy || !repoId.trim()} onClick={() => runPreflight().catch(error => setMessage(String(error)))}><ShieldCheck size={16} />{preflightBusy ? 'Checking' : 'Check'}</button>
-        <button disabled={busy || activeServerStartInProgress || !repoId.trim()} onClick={startModel}><Play size={16} />{hfStartActionLabel(autoBenchmarkAfterStart, autoCompareReady && autoCompareAfterStart)}</button>
-        <button disabled={busy || activeServerStartInProgress || !hf?.serverRunning || !repoId.trim()} onClick={addLocalTarget}><Plus size={16} />Add target</button>
-        <button disabled={busy || !hf?.serverRunning} onClick={stopModel}>Stop</button>
+        {hf?.serverRunning ? <button disabled={busy || activeServerStartInProgress} onClick={stopModel}>Stop</button> : null}
+        <details className="advanced-section" open={localAdvancedOpen} onToggle={event => setLocalAdvancedOpen(event.currentTarget.open)}>
+          <summary><SlidersHorizontal size={14} />Advanced</summary>
+          <div className="form-grid">
+            <label>Revision <input value={revision} onChange={event => { setRevision(event.target.value); setModelFileDetails([]); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }} placeholder="main, tag, branch, or commit" /></label>
+            <label className="toggle"><input type="checkbox" checked={autoStartAfterDownload} onChange={event => setAutoStartAfterDownload(event.target.checked)} />Start after download</label>
+            <label className="toggle"><input type="checkbox" checked={autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkAfterStart(event.target.checked)} />Run benchmark after start</label>
+            <label className="toggle" title={selectablePricedCloudTargetCount ? 'Include the first priced cloud target in the automatic benchmark' : selectableCloudTargetCount ? 'Add input/output pricing to a cloud target before automatic local/cloud comparison' : 'Add a selectable cloud target before automatic local/cloud comparison'}>
+              <input
+                type="checkbox"
+                checked={autoCompareAfterStart && selectablePricedCloudTargetCount > 0}
+                disabled={!autoBenchmarkAfterStart || !selectablePricedCloudTargetCount}
+                onChange={event => setAutoCompareAfterStart(event.target.checked)}
+              />
+              Compare with cloud target
+            </label>
+            <label>Benchmark pack <select value={autoBenchmarkPackId} disabled={!autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
+            <label>Port <input type="number" min="1024" max="65535" step="1" value={port} onChange={event => setPort(Number(event.target.value))} /></label>
+            <label>Context <input type="number" min="128" max="131072" step="1" value={context} onChange={event => { setContext(Number(event.target.value)); setPreflight(null); }} /></label>
+            <button disabled={busy || preflightBusy || !repoId.trim()} onClick={() => runPreflight().catch(error => setMessage(String(error)))}><ShieldCheck size={16} />{preflightBusy ? 'Checking' : 'Check'}</button>
+            <button disabled={busy || activeServerStartInProgress || !repoId.trim()} onClick={startModel}><Play size={16} />{hfStartActionLabel(autoBenchmarkAfterStart, autoCompareReady && autoCompareAfterStart)}</button>
+            <button disabled={busy || activeServerStartInProgress || !hf?.serverRunning || !repoId.trim()} onClick={addLocalTarget}><Plus size={16} />Add target</button>
+          </div>
+        </details>
       </div>
       {downloadPlan ? <div className={`preflight-box ${downloadPlan.alreadyDownloaded ? 'ok' : downloadFailed ? 'warn' : ''}`}><strong>Download plan</strong><p>{downloadPlan.summary}</p><div className="mini-grid"><span>{downloadPlan.plannedBytes ? formatBytes(downloadPlan.plannedBytes) : 'size unknown'}</span><span>{downloadPlan.existingBytes ? `${formatBytes(downloadPlan.existingBytes)} local` : 'no complete local file'}</span><span>{downloadPlan.partialBytes ? `${formatBytes(downloadPlan.partialBytes)} partial` : 'no partial fragments'}</span><span>{downloadPlan.alreadyDownloaded ? 'already downloaded' : 'needs transfer'}</span></div><p className="muted">{downloadPlan.diskCheck} {downloadPlan.retryHint}</p><p className="muted">{downloadPlan.localDir}</p></div> : null}
       {autoBenchmarkAfterStart && !autoCompareReady ? <div className="preflight-box warn">
