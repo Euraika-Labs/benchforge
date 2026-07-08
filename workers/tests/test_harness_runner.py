@@ -59,6 +59,12 @@ class HarnessRunnerTests(unittest.TestCase):
         tool.chmod(tool.stat().st_mode | stat.S_IXUSR)
         return tool
 
+    def symlink_or_skip(self, link: Path, target: Path) -> None:
+        try:
+            link.symlink_to(target)
+        except OSError as exc:
+            self.skipTest(f"symlinks are not available in this environment: {exc}")
+
     def final_event(self, output: Path) -> dict:
         events = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
         self.assertGreaterEqual(len(events), 2)
@@ -1179,6 +1185,64 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(sources, {"dependency-fallback"})
             self.assertEqual(packages, {"pyyaml", "lodash"})
 
+    def test_security_runner_dependency_fallback_ignores_symlinked_manifests(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir, tempfile.TemporaryDirectory() as outside_raw:
+            temp_dir = Path(raw_dir)
+            workspace = temp_dir / "workspace"
+            workspace.mkdir()
+            outside = Path(outside_raw) / "requirements.txt"
+            outside.write_text("PyYAML==3.13\n", encoding="utf-8")
+            self.symlink_or_skip(workspace / "requirements.txt", outside)
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "security",
+                "--tool",
+                "dependency",
+                "--workspace",
+                str(workspace),
+                "--output",
+                str(output),
+                env_overrides={"PATH": str(temp_dir)},
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "passed")
+            self.assertEqual(event["metrics"]["finding_count"], 0)
+            self.assertEqual(event["metrics"]["files_scanned"], 0)
+
+    def test_security_runner_fallback_ignores_symlinked_files_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir, tempfile.TemporaryDirectory() as outside_raw:
+            temp_dir = Path(raw_dir)
+            workspace = temp_dir / "workspace"
+            workspace.mkdir()
+            (workspace / "safe.py").write_text("print('ok')\n", encoding="utf-8")
+            outside = Path(outside_raw) / "unsafe.py"
+            outside.write_text("eval('2 + 2')\n", encoding="utf-8")
+            self.symlink_or_skip(workspace / "unsafe.py", outside)
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "security",
+                "--tool",
+                "fallback",
+                "--workspace",
+                str(workspace),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "passed")
+            self.assertEqual(event["metrics"]["finding_count"], 0)
+            self.assertEqual(event["metrics"]["files_scanned"], 1)
+
     def test_security_runner_secret_fallback_redacts_matches(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
             temp_dir = Path(raw_dir)
@@ -1212,6 +1276,35 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(finding["line"], 1)
             self.assertTrue(finding["redacted"])
             self.assertIn("fingerprint", finding)
+
+    def test_security_runner_secret_fallback_ignores_symlinked_files_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir, tempfile.TemporaryDirectory() as outside_raw:
+            temp_dir = Path(raw_dir)
+            workspace = temp_dir / "workspace"
+            workspace.mkdir()
+            outside = Path(outside_raw) / "config.py"
+            outside.write_text("OPENAI_API_KEY = 'sk-testsecretvalue000000000000000000'\n", encoding="utf-8")
+            self.symlink_or_skip(workspace / "config.py", outside)
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "security",
+                "--tool",
+                "secrets",
+                "--workspace",
+                str(workspace),
+                "--output",
+                str(output),
+                env_overrides={"PATH": str(temp_dir)},
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "passed")
+            self.assertEqual(event["metrics"]["finding_count"], 0)
+            self.assertEqual(event["metrics"]["files_scanned"], 0)
 
     def test_security_runner_parses_gitleaks_json_without_secret_value(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:

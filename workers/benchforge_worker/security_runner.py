@@ -467,7 +467,7 @@ def iter_scan_files(root: Path, suffixes: set[str] = SCANNED_SUFFIXES):
     for path in root.rglob("*"):
         if any(part in IGNORED_DIRS for part in path.parts):
             continue
-        if path.is_file() and (path.suffix.lower() in suffixes or path.name in SCANNED_FILE_NAMES):
+        if safe_workspace_file(root, path) and (path.suffix.lower() in suffixes or path.name in SCANNED_FILE_NAMES):
             yield path
 
 
@@ -475,12 +475,31 @@ def iter_dependency_manifests(root: Path):
     for path in root.rglob("*"):
         if any(part in IGNORED_DIRS for part in path.parts):
             continue
-        if path.is_file() and path.name in DEPENDENCY_MANIFEST_NAMES:
+        if safe_workspace_file(root, path) and path.name in DEPENDENCY_MANIFEST_NAMES:
             yield path
 
 
 def dependency_manifests_in(root: Path) -> list[Path]:
-    return [path for path in root.iterdir() if path.is_file() and path.name in DEPENDENCY_MANIFEST_NAMES]
+    return [path for path in root.iterdir() if safe_workspace_file(root, path) and path.name in DEPENDENCY_MANIFEST_NAMES]
+
+
+def safe_workspace_file(root: Path, path: Path) -> bool:
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return False
+    try:
+        resolved_root = root.resolve()
+        resolved_path = path.resolve()
+        resolved_path.relative_to(resolved_root)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return path.is_file()
 
 
 def count_scanned_files(root: Path, suffixes: set[str] = SCANNED_SUFFIXES) -> int:
