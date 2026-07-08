@@ -1403,8 +1403,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
 
   useEffect(() => {
     if (!adapterId && runnableAdapters[0]) {
-      setAdapterId(runnableAdapters[0].id);
-      setBaseUrl(runnableAdapters[0].defaultBaseUrl ?? '');
+      selectAdapter(runnableAdapters[0].id, { prefillFirstPreset: true });
     }
   }, [adapterId, runnableAdapters]);
 
@@ -1513,8 +1512,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
     clearTargetForm();
     clearHarnessForm();
-    selectAdapter(adapter.id);
-    const defaultPreset = applyFirstModelPreset(adapter);
+    const defaultPreset = selectAdapter(adapter.id, { prefillFirstPreset: true });
     const presetHint = defaultPreset
       ? `; ${defaultPreset.label} is prefilled with pricing, so you can add the target or search for another model`
       : '; search the catalog or enter a model manually';
@@ -1555,23 +1553,28 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     };
   }, [selectedAdapter?.id, selectedProviderKeychainId, needsApiKey]);
 
-  function selectAdapter(nextId: string) {
+  function selectAdapter(nextId: string, options: { prefillFirstPreset?: boolean } = {}) {
     const next = runnableAdapters.find(adapter => adapter.id === nextId);
     setAdapterId(nextId);
     setEditingTargetPreserveApiKeyRef(false);
     setEditingTargetPreserveApiKeyEnvRef(false);
     setBaseUrl(next?.defaultBaseUrl ?? '');
+    setApiKey('');
+    setApiKeyEnv('');
+    setCloudModels([]);
+    setSelectedCloudModel(null);
+    setTargetAdvancedOpen(false);
+    if (next && options.prefillFirstPreset) {
+      return applyFirstModelPreset(next);
+    }
     setModelPresetId('custom');
     setModel('');
-    setApiKeyEnv('');
     setInputPrice('');
     setOutputPrice('');
     setCacheReadPrice('');
     setCacheWritePrice('');
     setCloudModelQuery('');
-    setCloudModels([]);
-    setSelectedCloudModel(null);
-    setTargetAdvancedOpen(false);
+    return null;
   }
 
   function handleModelChange(nextModel: string) {
@@ -1737,7 +1740,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const adapter = selectedAdapter ?? runnableAdapters[0];
     setEditingTargetId('');
     setTargetName('');
-    setModel('');
+    setAdapterId(adapter?.id ?? '');
     setBaseUrl(adapter?.defaultBaseUrl ?? '');
     setApiKey('');
     setApiKeyEnv('');
@@ -1747,18 +1750,25 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setSeed('');
     setTimeoutSeconds('120');
     setRetryCount('1');
+    setEditingTargetHadValidationError(false);
+    setEditingTargetPreserveApiKeyRef(false);
+    setEditingTargetPreserveApiKeyEnvRef(false);
+    setCloudModels([]);
+    setSelectedCloudModel(null);
+    setTargetAdvancedOpen(false);
+    if (adapter) {
+      const defaultPreset = applyFirstModelPreset(adapter);
+      if (defaultPreset) {
+        return;
+      }
+    }
+    setModel('');
     setInputPrice('');
     setOutputPrice('');
     setCacheReadPrice('');
     setCacheWritePrice('');
     setModelPresetId('custom');
-    setEditingTargetHadValidationError(false);
-    setEditingTargetPreserveApiKeyRef(false);
-    setEditingTargetPreserveApiKeyEnvRef(false);
     setCloudModelQuery('');
-    setCloudModels([]);
-    setSelectedCloudModel(null);
-    setTargetAdvancedOpen(false);
   }
 
   function clearHarnessForm() {
