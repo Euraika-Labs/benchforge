@@ -374,6 +374,39 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertIsNone(event["tests"]["passed"])
             self.assertIsNone(event["tests"]["failed"])
 
+    def test_external_harness_total_only_alias_is_not_benchmark_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            tool = self.write_tool(
+                temp_dir,
+                "fake-total-only-harness",
+                "import json\nprint(json.dumps({'total_count': 3}))\n",
+            )
+            target_config = temp_dir / "target.json"
+            target_config.write_text(json.dumps({"harness": {"command": [str(tool)]}}), encoding="utf-8")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "terminal-bench",
+                "--target-config",
+                str(target_config),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 2, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "error")
+            self.assertIsNone(event["score"])
+            self.assertEqual(event["error_code"], "harness_unparsed")
+            self.assertIsNone(event["tests"]["total"])
+            self.assertIsNone(event["tests"]["passed"])
+            self.assertIsNone(event["tests"]["failed"])
+
     def test_external_harness_zero_exit_score_only_perfect_result_can_pass(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
             temp_dir = Path(raw_dir)
@@ -829,6 +862,37 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(event["score"], 0.75)
             self.assertEqual(event["tests"]["total"], 4)
 
+    def test_worker_imports_csv_common_summary_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            imported = temp_dir / "suite-alias-summary.csv"
+            imported.write_text(
+                "total examples,num correct,num incorrect,exact match\n4,3,1,75%\n",
+                encoding="utf-8",
+            )
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "evalplus",
+                "--import-path",
+                str(imported),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            event = self.final_event(output)
+            self.assert_import_metadata(event, import_format="csv", summary_source="csv")
+            self.assertEqual(event["status"], "failed")
+            self.assertEqual(event["score"], 0.75)
+            self.assertEqual(event["tests"]["total"], 4)
+            self.assertEqual(event["tests"]["passed"], 3)
+            self.assertEqual(event["tests"]["failed"], 1)
+
     def test_worker_imports_csv_case_results_from_directory(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
             temp_dir = Path(raw_dir)
@@ -1141,6 +1205,45 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertAlmostEqual(event["score"], 2 / 3)
             self.assertEqual(event["tests"]["total"], 3)
             self.assertEqual(event["tests"]["passed"], 2)
+            self.assertEqual(event["tests"]["failed"], 1)
+
+    def test_worker_imports_json_common_summary_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            imported = temp_dir / "alias-summary.json"
+            imported.write_text(
+                json.dumps(
+                    {
+                        "total-count": 5,
+                        "num correct": 4,
+                        "num-incorrect": 1,
+                        "success rate": "80%",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "terminal-bench",
+                "--import-path",
+                str(imported),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            event = self.final_event(output)
+            self.assert_import_metadata(event, import_format="json", summary_source="json")
+            self.assertEqual(event["status"], "failed")
+            self.assertEqual(event["score"], 0.8)
+            self.assertEqual(event["tests"]["total"], 5)
+            self.assertEqual(event["tests"]["passed"], 4)
             self.assertEqual(event["tests"]["failed"], 1)
 
     def test_worker_rejects_import_path_outside_workspace(self) -> None:

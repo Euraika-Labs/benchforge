@@ -76,6 +76,103 @@ RESULT_COLLECTION_KEYS = [
     "examples",
     "records",
 ]
+TOTAL_COUNT_KEYS = [
+    "total",
+    "total_count",
+    "count",
+    "num_tests",
+    "n",
+    "total_tests",
+    "tests_count",
+    "total_instances",
+    "n_total",
+    "num_total",
+    "total_examples",
+    "num_examples",
+    "n_samples",
+    "samples",
+    "total_cases",
+    "case_count",
+    "num_problems",
+]
+PASSED_COUNT_KEYS = [
+    "passed",
+    "pass_count",
+    "passed_count",
+    "successes",
+    "success",
+    "success_count",
+    "successes_count",
+    "resolved",
+    "passed_tests",
+    "resolved_count",
+    "num_resolved",
+    "n_passed",
+    "correct",
+    "correct_count",
+    "num_correct",
+    "n_correct",
+    "succeeded",
+    "solved",
+    "solved_count",
+    "num_solved",
+    "completed",
+]
+FAILED_COUNT_KEYS = [
+    "failed",
+    "fail_count",
+    "failed_count",
+    "failures",
+    "failure",
+    "unresolved",
+    "failed_tests",
+    "unresolved_count",
+    "num_unresolved",
+    "n_failed",
+    "incorrect",
+    "incorrect_count",
+    "num_incorrect",
+    "n_incorrect",
+    "errors",
+    "error_count",
+    "errors_count",
+    "unsolved",
+    "unsolved_count",
+    "num_unsolved",
+    "skipped",
+    "skip_count",
+    "skipped_count",
+]
+SCORE_KEYS = [
+    "score",
+    "mean_score",
+    "average_score",
+    "avg_score",
+    "pass_rate",
+    "accuracy",
+    "success_rate",
+    "correct_rate",
+    "resolved_rate",
+    "exact_match",
+    "exact_match_rate",
+    "em",
+    "f1",
+    "f1_score",
+    "macro_f1",
+    "pass@1",
+    "pass_at_1",
+    "pass_1",
+]
+PERCENT_SCORE_KEYS = [
+    "score_percent",
+    "pass_percent",
+    "accuracy_percent",
+    "success_percent",
+    "correct_percent",
+    "exact_match_percent",
+    "pass@1_percent",
+    "pass_at_1_percent",
+]
 
 
 class HarnessConfigError(Exception):
@@ -934,55 +1031,19 @@ def summary_from_json(value: Any) -> dict[str, Any] | None:
 
 
 def summary_from_count_mapping(source: dict[str, Any]) -> dict[str, Any] | None:
-    total = first_count(source, ["total", "num_tests", "n", "total_tests", "total_instances", "n_total"])
-    passed = first_count(
-        source,
-        [
-            "passed",
-            "successes",
-            "success",
-            "resolved",
-            "passed_tests",
-            "resolved_count",
-            "num_resolved",
-            "n_passed",
-            "correct",
-            "succeeded",
-        ],
-    )
-    failed = first_count(
-        source,
-        [
-            "failed",
-            "failures",
-            "failure",
-            "unresolved",
-            "failed_tests",
-            "unresolved_count",
-            "num_unresolved",
-            "n_failed",
-            "incorrect",
-            "errors",
-        ],
-    )
-    score = first_normalized_score(
-        source,
-        ["score", "pass_rate", "accuracy", "pass@1", "pass_at_1", "resolved_rate"],
-        percent=False,
-    )
+    total = first_count(source, TOTAL_COUNT_KEYS)
+    passed = first_count(source, PASSED_COUNT_KEYS)
+    failed = first_count(source, FAILED_COUNT_KEYS)
+    score = first_normalized_score(source, SCORE_KEYS, percent=False)
     if score is None:
-        score = first_normalized_score(
-            source,
-            ["score_percent", "pass_percent", "accuracy_percent", "pass@1_percent"],
-            percent=True,
-        )
+        score = first_normalized_score(source, PERCENT_SCORE_KEYS, percent=True)
     if total is None and passed is not None and failed is not None:
         total = passed + failed
     if failed is None and total is not None and passed is not None:
         failed = max(total - passed, 0)
     if passed is None and total is not None and failed is not None:
         passed = max(total - failed, 0)
-    if total is None and score is None and (passed is None or failed is None):
+    if score is None and passed is None and failed is None:
         return None
     return {
         "total": int(total) if total is not None else None,
@@ -1098,42 +1159,16 @@ def summary_from_csv_block(text: str) -> dict[str, Any] | None:
         return None
     header_keys = {normalize_summary_key(key) for key in reader.fieldnames if key}
     known_keys = {
-        "accuracy",
-        "accuracy_percent",
-        "correct",
-        "failed",
-        "failed_tests",
-        "failure",
-        "incorrect",
-        "n_failed",
-        "n_passed",
-        "n_total",
-        "num_resolved",
-        "num_tests",
-        "num_unresolved",
+        *TOTAL_COUNT_KEYS,
+        *PASSED_COUNT_KEYS,
+        *FAILED_COUNT_KEYS,
+        *SCORE_KEYS,
+        *PERCENT_SCORE_KEYS,
         "ok",
         "outcome",
         "pass",
-        "pass_1",
-        "pass_at_1",
-        "pass_percent",
-        "pass_rate",
-        "passed",
-        "passed_tests",
-        "resolved",
-        "resolved_count",
-        "resolved_rate",
         "result",
-        "score",
-        "score_percent",
         "status",
-        "success",
-        "successes",
-        "total",
-        "total_instances",
-        "total_tests",
-        "unresolved",
-        "unresolved_count",
         "verdict",
     }
     if not header_keys.intersection(known_keys):
@@ -1341,7 +1376,7 @@ def status_result(value: str) -> bool | None:
 
 def first_count(source: dict[str, Any], keys: list[str]) -> float | None:
     for key in keys:
-        value = source.get(key)
+        value = summary_value(source, key)
         if isinstance(value, bool):
             continue
         if isinstance(value, (int, float)):
@@ -1360,9 +1395,19 @@ def first_count(source: dict[str, Any], keys: list[str]) -> float | None:
 
 def first_normalized_score(source: dict[str, Any], keys: list[str], *, percent: bool) -> float | None:
     for key in keys:
-        score = normalized_score_value(source.get(key), percent=percent)
+        score = normalized_score_value(summary_value(source, key), percent=percent)
         if score is not None:
             return score
+    return None
+
+
+def summary_value(source: dict[str, Any], key: str) -> Any:
+    if key in source:
+        return source.get(key)
+    normalized_key = normalize_summary_key(key)
+    for source_key, value in source.items():
+        if isinstance(source_key, str) and normalize_summary_key(source_key) == normalized_key:
+            return value
     return None
 
 
@@ -1440,7 +1485,7 @@ def summary_has_benchmark_evidence(summary: dict[str, Any]) -> bool:
     score = summary.get("score")
     if isinstance(score, (int, float)):
         return True
-    if isinstance(total, int) and total > 0:
+    if isinstance(total, int) and total > 0 and (isinstance(passed, int) or isinstance(failed, int)):
         return True
     return isinstance(passed, int) and isinstance(failed, int) and (passed + failed) > 0
 
