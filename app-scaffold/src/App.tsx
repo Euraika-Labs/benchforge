@@ -1193,6 +1193,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [validations, setValidations] = useState<Record<string, TargetValidation>>({});
   const [validating, setValidating] = useState('');
   const [editingTargetId, setEditingTargetId] = useState('');
+  const [editingTargetHadValidationError, setEditingTargetHadValidationError] = useState(false);
   const [editingTargetPreserveApiKeyRef, setEditingTargetPreserveApiKeyRef] = useState(false);
   const [editingTargetPreserveApiKeyEnvRef, setEditingTargetPreserveApiKeyEnvRef] = useState(false);
   const [harnessPresetId, setHarnessPresetId] = useState('custom');
@@ -1494,6 +1495,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setCacheReadPrice('');
     setCacheWritePrice('');
     setModelPresetId('custom');
+    setEditingTargetHadValidationError(false);
     setEditingTargetPreserveApiKeyRef(false);
     setEditingTargetPreserveApiKeyEnvRef(false);
     setCloudModelQuery('');
@@ -1529,6 +1531,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       }
       const config = exported.config ?? {};
       setEditingTargetId(exported.id);
+      setEditingTargetHadValidationError(target.validationStatus === 'error');
       setEditingTargetPreserveApiKeyRef(config.api_key_keychain === '[REDACTED]');
       setEditingTargetPreserveApiKeyEnvRef(config.api_key_env === '[REDACTED]');
       setAdapterId(adapter.id);
@@ -1821,6 +1824,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       return;
     }
     const wasEditing = Boolean(editingTargetId);
+    const wasRepairingValidationError = wasEditing && editingTargetHadValidationError;
     const keychainId = providerKeychainId(selectedAdapter, baseUrl);
     const shouldPreserveKeyReference = wasEditing && !apiKey.trim() && editingTargetPreserveApiKeyRef;
     const shouldPreserveEnvReference = wasEditing && !apiKeyEnv.trim() && editingTargetPreserveApiKeyEnvRef;
@@ -1965,6 +1969,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         return next;
       });
       setEditingTargetId('');
+      setEditingTargetHadValidationError(false);
       setEditingTargetPreserveApiKeyRef(false);
       setEditingTargetPreserveApiKeyEnvRef(false);
       await finishModelTargetHandoff(
@@ -1984,10 +1989,11 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       return next;
     });
     setEditingTargetId('');
+    setEditingTargetHadValidationError(false);
     setEditingTargetPreserveApiKeyRef(false);
     setEditingTargetPreserveApiKeyEnvRef(false);
     const validation = await validateSavedTarget(target.id);
-    await finishModelTargetHandoff(target, validation, name, wasEditing);
+    await finishModelTargetHandoff(target, validation, name, wasEditing, null, null, wasRepairingValidationError);
   }
 
   async function finishModelTargetHandoff(
@@ -1997,6 +2003,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     wasEditing: boolean,
     prestartedJob: RunJob | null = null,
     benchmarkError: string | null = null,
+    wasRepairingValidationError = false,
   ) {
     await onRefresh();
     if (!validation) {
@@ -2009,6 +2016,15 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
     const validationNote = validation.status === 'ok' ? 'validated' : `saved with warning: ${validation.detail}`;
     if (wasEditing) {
+      if (wasRepairingValidationError && (target.kind === 'direct_model' || target.kind === 'harnessed_model')) {
+        const comparisonPackId = recommendedComparisonPackId(packs);
+        const comparisonIntent = modelComparisonIntentForTarget(target, targets, comparisonPackId);
+        if (comparisonIntent) {
+          openRunBuilder(comparisonIntent);
+          setMessage(`Updated target ${name}; ${validationNote}. Run Builder is ready to rerun the local/cloud ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)} comparison with 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap`);
+          return;
+        }
+      }
       setMessage(`Updated target ${name}; ${validationNote}`);
       return;
     }
