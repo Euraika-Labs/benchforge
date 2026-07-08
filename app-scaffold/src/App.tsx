@@ -142,6 +142,12 @@ interface TargetRepairIntent {
   nonce: number;
 }
 
+interface TargetSetupIntent {
+  adapterId: string;
+  code: string;
+  nonce: number;
+}
+
 interface ResultsScopeIntent {
   groupId: string;
   runId?: string;
@@ -303,6 +309,7 @@ export default function App() {
   const [artifactText, setArtifactText] = useState('');
   const [runBuilderIntent, setRunBuilderIntent] = useState<RunBuilderIntent | null>(null);
   const [targetRepairIntent, setTargetRepairIntent] = useState<TargetRepairIntent | null>(null);
+  const [targetSetupIntent, setTargetSetupIntent] = useState<TargetSetupIntent | null>(null);
   const [resultsScopeIntent, setResultsScopeIntent] = useState<ResultsScopeIntent | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -446,6 +453,13 @@ export default function App() {
 
   function openTargetRepair(intent: Omit<TargetRepairIntent, 'nonce'>) {
     setTargetRepairIntent({ ...intent, nonce: Date.now() });
+    setTargetSetupIntent(null);
+    setPage('targets');
+  }
+
+  function openTargetSetup(intent: Omit<TargetSetupIntent, 'nonce'>) {
+    setTargetSetupIntent({ ...intent, nonce: Date.now() });
+    setTargetRepairIntent(null);
     setPage('targets');
   }
 
@@ -457,7 +471,7 @@ export default function App() {
   const content = useMemo(() => {
     switch (page) {
       case 'targets':
-        return <Targets targets={targets} adapters={adapters} packs={packs} onRefresh={refresh} setMessage={setMessage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} repairIntent={targetRepairIntent} onRepairIntentConsumed={() => setTargetRepairIntent(null)} />;
+        return <Targets targets={targets} adapters={adapters} packs={packs} onRefresh={refresh} setMessage={setMessage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} repairIntent={targetRepairIntent} onRepairIntentConsumed={() => setTargetRepairIntent(null)} setupIntent={targetSetupIntent} onSetupIntentConsumed={() => setTargetSetupIntent(null)} />;
       case 'benchmarks':
         return <Benchmarks packs={packs} diagnostics={packDiagnostics} onRefresh={refresh} setMessage={setMessage} />;
       case 'runs':
@@ -481,13 +495,13 @@ export default function App() {
           />
         );
       case 'doctor':
-        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
+        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
       case 'settings':
         return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} />;
       default:
         return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
     }
-  }, [page, targets, adapters, packs, packDiagnostics, checks, diagnostics, results, runJobs, downloadJobs, serverJobs, artifacts, selectedRunId, selectedResult, artifactText, runBuilderIntent, targetRepairIntent, resultsScopeIntent, busy]);
+  }, [page, targets, adapters, packs, packDiagnostics, checks, diagnostics, results, runJobs, downloadJobs, serverJobs, artifacts, selectedRunId, selectedResult, artifactText, runBuilderIntent, targetRepairIntent, targetSetupIntent, resultsScopeIntent, busy]);
 
   return (
     <div className="shell">
@@ -1175,7 +1189,7 @@ function formValueFromUnknown(value: unknown, fallback = '') {
   return fallback;
 }
 
-function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuilder, openResultsForGroup, repairIntent, onRepairIntentConsumed }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; repairIntent: TargetRepairIntent | null; onRepairIntentConsumed: () => void }) {
+function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuilder, openResultsForGroup, repairIntent, onRepairIntentConsumed, setupIntent, onSetupIntentConsumed }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; repairIntent: TargetRepairIntent | null; onRepairIntentConsumed: () => void; setupIntent: TargetSetupIntent | null; onSetupIntentConsumed: () => void }) {
   const runnableAdapters = adapters.filter(adapter => ['openai_compatible', 'openai_responses', 'anthropic_messages', 'mistral_api', 'azure_openai'].includes(adapter.kind));
   const [adapterId, setAdapterId] = useState('');
   const [modelPresetId, setModelPresetId] = useState('custom');
@@ -1311,6 +1325,27 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const missingNote = missingTargetIds.length ? ` Missing target(s): ${previewList(missingTargetIds)}.` : '';
     setMessage(`${errorCategoryRepairHint(repairIntent.code)}${unavailableNote}${missingNote}`);
   }, [repairIntent, targets, onRepairIntentConsumed, setMessage]);
+
+  useEffect(() => {
+    if (!setupIntent) {
+      return;
+    }
+    if (!runnableAdapters.length) {
+      return;
+    }
+    const adapter = runnableAdapters.find(item => item.id === setupIntent.adapterId);
+    onSetupIntentConsumed();
+    if (!adapter) {
+      setMessage(`Cloud adapter ${setupIntent.adapterId} is not available in Targets`);
+      return;
+    }
+    clearTargetForm();
+    clearHarnessForm();
+    selectAdapter(adapter.id);
+    const presetHint = adapterModelPresets(adapter).length ? ', choose a model preset or search the catalog' : ' and search the catalog';
+    const actionHint = setupIntent.code === 'missing_key' ? 'Paste the API key' : 'Review the provider setup';
+    setMessage(`${actionHint} for ${adapter.name}${presetHint}.`);
+  }, [setupIntent, runnableAdapters, onSetupIntentConsumed, setMessage]);
 
   useEffect(() => {
     if (!selectedAdapter || !needsApiKey) {
@@ -4264,7 +4299,7 @@ function Results({ results, targets, adapters, artifacts, selectedRunId, setSele
   </section>;
 }
 
-function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder, openTargetRepair }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void }) {
+function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder, openTargetRepair, openTargetSetup }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
   const [actionBusy, setActionBusy] = useState('');
   const [actionLog, setActionLog] = useState('');
   const errors = checks.filter(c => c.status === 'error').length;
@@ -4343,7 +4378,7 @@ function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMe
         <td><span className={`pill ${c.status}`}>{c.status}</span></td>
         <td>{c.detail}</td>
         <td className="doctor-remediation">{c.remediation || '-'}</td>
-        <td>{doctorAction(c, targets, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair)}</td>
+        <td>{doctorAction(c, targets, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup)}</td>
         <td className="doctor-command">{c.command ? <div className="doctor-command-cell"><code>{c.command}</code><button title="Copy command or path" onClick={() => copyDoctorCommand(c).catch(error => setMessage(String(error)))}><Copy size={14} /></button></div> : '-'}</td>
       </tr>)}</tbody>
     </table>
@@ -4484,7 +4519,11 @@ function isLocalModelToolCheck(check: DoctorCheck) {
   return check.id === 'python3' || check.id === 'hf' || check.id === 'llama-server';
 }
 
-function doctorAction(check: DoctorCheck, targets: Target[], actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void) {
+function cloudKeyDoctorAdapterId(check: DoctorCheck) {
+  return check.id.startsWith('cloud-key-') ? check.id.slice('cloud-key-'.length) : '';
+}
+
+function doctorAction(check: DoctorCheck, targets: Target[], actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
@@ -4492,7 +4531,10 @@ function doctorAction(check: DoctorCheck, targets: Target[], actionBusy: string,
     return <button onClick={() => setPage('settings')}><Settings size={14} />Local</button>;
   }
   if (check.id.startsWith('cloud-key-')) {
-    return <button onClick={() => setPage('targets')}><Settings size={14} />Key</button>;
+    const adapterId = cloudKeyDoctorAdapterId(check);
+    return <button onClick={() => {
+      openTargetSetup({ adapterId, code: 'missing_key' });
+    }}><Settings size={14} />Key</button>;
   }
   if (check.id.startsWith('endpoint-')) {
     return <button onClick={() => setPage('targets')}><Search size={14} />Detect</button>;
