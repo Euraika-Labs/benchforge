@@ -477,7 +477,7 @@ export default function App() {
       case 'benchmarks':
         return <Benchmarks packs={packs} diagnostics={packDiagnostics} onRefresh={refresh} setMessage={setMessage} />;
       case 'runs':
-        return <Runs targets={targets} packs={packs} busy={busy} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} runBuilderIntent={runBuilderIntent} onRunBuilderIntentConsumed={() => setRunBuilderIntent(null)} />;
+        return <Runs targets={targets} adapters={adapters} packs={packs} busy={busy} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} runBuilderIntent={runBuilderIntent} onRunBuilderIntentConsumed={() => setRunBuilderIntent(null)} />;
       case 'results':
         return (
           <Results
@@ -3137,7 +3137,7 @@ function Benchmarks({ packs, diagnostics, onRefresh, setMessage }: { packs: Benc
   </tr>)}</tbody></table></section>;
 }
 
-function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, openResultsForGroup, openTargetRepair, runBuilderIntent, onRunBuilderIntentConsumed }: { targets: Target[]; packs: BenchmarkPack[]; busy: boolean; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; runBuilderIntent: RunBuilderIntent | null; onRunBuilderIntentConsumed: () => void }) {
+function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, setPage, openResultsForGroup, openTargetRepair, openTargetSetup, runBuilderIntent, onRunBuilderIntentConsumed }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; busy: boolean; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void; runBuilderIntent: RunBuilderIntent | null; onRunBuilderIntentConsumed: () => void }) {
   const [selected, setSelected] = useState<string[]>(['mock-agent']);
   const [selectedPackId, setSelectedPackId] = useState('quick-smoke');
   const [packTasks, setPackTasks] = useState<BenchmarkPackTask[]>([]);
@@ -3195,6 +3195,8 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const recommendedComparisonConcurrency = Math.min(2, Math.max(1, selectedTargets.length));
   const selectedPackSupportsModelComparison = Boolean(selectedPack?.taskTypes.includes('prompt') && selectedPack.supportedTargetKinds.includes('direct_model'));
   const canApplyLocalCloudPanelShortcut = Boolean(localCloudTargetIds.length && (selectedLocalTargets.length || selectedCloudTargets.length) && !(selectedLocalTargets.length && selectedCloudTargets.length));
+  const canOpenLocalSetupFromReadiness = Boolean(selectedCloudTargets.length && !localTargetIds.length);
+  const canOpenCloudSetupFromReadiness = Boolean(selectedLocalTargets.length && !cloudTargetIds.length);
   const localCloudPanelShortcutPackId = selectedPackSupportsModelComparison ? selectedPackId : undefined;
   const parsedRepetitions = parsePositiveIntegerInRange(repetitions, 'Repetitions', 1, 100);
   const parsedWarmupRuns = parsePositiveIntegerInRange(warmupRuns, 'Warmup runs', 0, 20);
@@ -3545,6 +3547,14 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
     openTargetRepair({ targetIds, code: 'pricing_assumption' });
     setMessage(`Add input/output pricing before running a capped local/cloud comparison: ${previewList(targetIds)}`);
   }
+  function openLocalSetupFromRunBuilder() {
+    openTargetSetup({ code: 'local_runtime_detect' });
+    setMessage('Detecting local runtimes for this local/cloud comparison');
+  }
+  function openCloudSetupFromRunBuilder() {
+    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
+    setMessage('Preparing cloud target setup for this local/cloud comparison');
+  }
   async function cancelRun(id: string) {
     setMessage(`Cancelling run job ${id.slice(0, 8)}`);
     try {
@@ -3728,6 +3738,8 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
       {comparisonRunReadiness ? <LocalCloudRunReadinessPanel
         readiness={comparisonRunReadiness}
         onUseLocalCloud={canApplyLocalCloudPanelShortcut ? () => applyTargetShortcut('local/cloud comparison', localCloudTargetIds, localCloudPanelShortcutPackId) : undefined}
+        onAddLocalTarget={canOpenLocalSetupFromReadiness ? openLocalSetupFromRunBuilder : undefined}
+        onAddCloudTarget={canOpenCloudSetupFromReadiness ? openCloudSetupFromRunBuilder : undefined}
         onSetCostCap={applyRecommendedCostCap}
         onRepairPricing={repairRunPricingBlockers}
       /> : null}
@@ -3797,8 +3809,22 @@ function PackRunReadiness({ pack, docker }: { pack: BenchmarkPack; docker: boole
   </div>;
 }
 
-function LocalCloudRunReadinessPanel({ readiness, onUseLocalCloud, onSetCostCap, onRepairPricing }: { readiness: LocalCloudRunReadiness; onUseLocalCloud?: () => void; onSetCostCap?: (value: number) => void; onRepairPricing?: (targetIds: string[]) => void }) {
-  const hasActions = Boolean(onUseLocalCloud || (readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing));
+function LocalCloudRunReadinessPanel({
+  readiness,
+  onUseLocalCloud,
+  onAddLocalTarget,
+  onAddCloudTarget,
+  onSetCostCap,
+  onRepairPricing,
+}: {
+  readiness: LocalCloudRunReadiness;
+  onUseLocalCloud?: () => void;
+  onAddLocalTarget?: () => void;
+  onAddCloudTarget?: () => void;
+  onSetCostCap?: (value: number) => void;
+  onRepairPricing?: (targetIds: string[]) => void;
+}) {
+  const hasActions = Boolean(onUseLocalCloud || onAddLocalTarget || onAddCloudTarget || (readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing));
   return <div className={`preflight-box ${readiness.tone}`}>
     <strong>Comparison Readiness</strong>
     <p>{readiness.headline}</p>
@@ -3806,6 +3832,8 @@ function LocalCloudRunReadinessPanel({ readiness, onUseLocalCloud, onSetCostCap,
     {readiness.notes.map(note => <p key={note}>{note}</p>)}
     {hasActions ? <div className="row-actions">
       {onUseLocalCloud ? <button onClick={onUseLocalCloud}><ClipboardCheck size={14} />Use local + cloud</button> : null}
+      {onAddLocalTarget ? <button onClick={onAddLocalTarget}><Search size={14} />Add local model</button> : null}
+      {onAddCloudTarget ? <button onClick={onAddCloudTarget}><Boxes size={14} />Add cloud target</button> : null}
       {readiness.recommendedCostCapUsd != null && onSetCostCap ? <button onClick={() => onSetCostCap(readiness.recommendedCostCapUsd!)}><ShieldCheck size={14} />Set {formatCost(readiness.recommendedCostCapUsd)} cap</button> : null}
       {readiness.pricingRepairTargetIds.length && onRepairPricing ? <button title={errorCategoryRepairHint('pricing_assumption')} onClick={() => onRepairPricing(readiness.pricingRepairTargetIds)}><Pencil size={14} />Add pricing</button> : null}
     </div> : null}

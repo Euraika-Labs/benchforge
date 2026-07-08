@@ -336,7 +336,7 @@ Import paths must resolve inside the per-run worker workspace or output director
 
 ## Results And Reports
 
-The Results page ranks targets by weighted pass rate, pass rate, average score, score spread, p95 latency, cost, throughput, and sample size. It also shows normalized-error recovery hints with target-repair shortcuts that preload editable target forms when possible, plus per-pack scoped Run Builder reruns that skip unavailable historical targets, and warns about incomplete pack/task coverage, low repetitions, missing pricing, prompt-cache pricing assumptions, missing provider-confirmed model identity, mixed generation settings, and uncalibrated packs. Run Builder also surfaces pre-run validation blockers with the same target-repair flow, and its Comparison Readiness panel can switch one-sided local/cloud selections into a paired comparison.
+The Results page ranks targets by weighted pass rate, pass rate, average score, score spread, p95 latency, cost, throughput, and sample size. It also shows normalized-error recovery hints with target-repair shortcuts that preload editable target forms when possible, plus per-pack scoped Run Builder reruns that skip unavailable historical targets, and warns about incomplete pack/task coverage, low repetitions, missing pricing, prompt-cache pricing assumptions, missing provider-confirmed model identity, mixed generation settings, and uncalibrated packs. Run Builder also surfaces pre-run validation blockers with the same target-repair flow, and its Comparison Readiness panel can switch one-sided local/cloud selections into a paired comparison or route missing local/cloud setup directly.
 
 Report-folder exports include:
 
