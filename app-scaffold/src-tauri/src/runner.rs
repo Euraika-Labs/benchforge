@@ -14722,7 +14722,6 @@ new file mode 100644
     #[test]
     fn local_openai_models_endpoint_confirms_missing_provider_model_identity() {
         let server = CloudContractServer::start().expect("contract server should start");
-        let _api_key = ScopedEnvVar::set(CLOUD_CONTRACT_API_KEY_ENV, "benchforge-contract-key");
         let conn = store::open_memory().expect("db should open");
         let pack = load_pack("cloud-contract").expect("cloud contract pack should load");
         let mut tasks = load_tasks(&pack).expect("cloud contract task should load");
@@ -14733,7 +14732,6 @@ new file mode 100644
             serde_json::json!({
                 "model": "contract-no-model-echo",
                 "base_url": format!("{}/v1", server.base_url()),
-                "api_key_env": CLOUD_CONTRACT_API_KEY_ENV,
                 "retry_count": 0,
                 "timeout_seconds": 10,
                 "max_tokens": 16
@@ -14742,7 +14740,12 @@ new file mode 100644
 
         let result = run_prompt_task(&conn, &target, &pack, &task, 0, 1, None, &|| false)
             .expect("local prompt run should persist");
-        assert_eq!(result.status, "passed");
+        assert_eq!(
+            result.status,
+            "passed",
+            "local prompt run should pass; error: {:?}",
+            result.error
+        );
 
         let record = store::list_results(&conn)
             .expect("results should list")
