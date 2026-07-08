@@ -987,10 +987,15 @@ function dashboardCheck(checks: DoctorCheck[], id: string, label: string, status
 
 function dashboardLocalCloudTargetIds(targets: Target[]) {
   const selectable = targets.filter(targetIsSelectableForRun);
-  const local = selectable.find(dashboardTargetLooksLocal);
+  const localIds = selectable.filter(dashboardTargetLooksLocal).map(target => target.id);
   const cloudTargets = selectable.filter(dashboardTargetLooksCloud);
-  const cloud = cloudTargets.find(targetHasInputOutputPricing) ?? cloudTargets[0];
-  return [local?.id, cloud?.id].filter((id): id is string => Boolean(id));
+  const pricedCloudIds = cloudTargets.filter(targetHasInputOutputPricing).map(target => target.id);
+  const cloudIds = pricedCloudIds.length ? pricedCloudIds : cloudTargets.map(target => target.id);
+  return uniqueIdsInOrder([...localIds, ...cloudIds]);
+}
+
+function uniqueIdsInOrder(values: string[]) {
+  return Array.from(new Set(values));
 }
 
 function dashboardTargetLooksLocal(target: Target) {

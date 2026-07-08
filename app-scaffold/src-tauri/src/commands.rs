@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -16354,31 +16354,42 @@ fn reserve_loopback_smoke_port() -> Result<u16, String> {
 
 fn handle_validation_contract_connection(mut stream: TcpStream) -> Result<(), String> {
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(Duration::from_secs(10)))
         .map_err(|err| err.to_string())?;
-    let mut request = Vec::new();
-    let mut buffer = [0_u8; 4096];
+    let mut reader = BufReader::new(stream.try_clone().map_err(|err| err.to_string())?);
+    let mut request = String::new();
+    let mut request_line = String::new();
+    reader
+        .read_line(&mut request_line)
+        .map_err(|err| err.to_string())?;
+    if request_line.trim().is_empty() {
+        return Ok(());
+    }
+    request.push_str(&request_line);
+    let mut content_length = 0usize;
     loop {
-        match stream.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(read) => {
-                request.extend_from_slice(&buffer[..read]);
-                if validation_request_complete(&request) {
-                    break;
-                }
+        let mut header = String::new();
+        reader
+            .read_line(&mut header)
+            .map_err(|err| err.to_string())?;
+        request.push_str(&header);
+        let trimmed = header.trim();
+        if trimmed.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = trimmed.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse().unwrap_or(0);
             }
-            Err(err)
-                if matches!(
-                    err.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                break;
-            }
-            Err(err) => return Err(err.to_string()),
         }
     }
-    let request = String::from_utf8_lossy(&request);
+    if content_length > 0 {
+        let mut body = vec![0_u8; content_length];
+        reader
+            .read_exact(&mut body)
+            .map_err(|err| err.to_string())?;
+        request.push_str(&String::from_utf8_lossy(&body));
+    }
     let response = validation_contract_response(&request);
     let status_text = match response.status {
         200 => "OK",
@@ -16399,23 +16410,6 @@ fn handle_validation_contract_connection(mut stream: TcpStream) -> Result<(), St
         .write_all(http.as_bytes())
         .map_err(|err| err.to_string())?;
     stream.flush().map_err(|err| err.to_string())
-}
-
-fn validation_request_complete(request: &[u8]) -> bool {
-    let text = String::from_utf8_lossy(request);
-    let Some(header_end) = text.find("\r\n\r\n") else {
-        return false;
-    };
-    let content_length = text[..header_end]
-        .lines()
-        .find_map(|line| {
-            let (name, value) = line.split_once(':')?;
-            name.eq_ignore_ascii_case("content-length")
-                .then(|| value.trim().parse::<usize>().ok())
-                .flatten()
-        })
-        .unwrap_or(0);
-    request.len() >= header_end + 4 + content_length
 }
 
 struct ValidationContractResponse {
