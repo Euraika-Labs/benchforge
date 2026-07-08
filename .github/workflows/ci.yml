@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-gates:
+    name: Offline gates
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: benchforge-blueprint
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: benchforge-blueprint/app-scaffold/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install local model runtime
+        run: brew install llama.cpp
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            benchforge-blueprint/app-scaffold/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('benchforge-blueprint/app-scaffold/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Bootstrap
+        run: ./scripts/bootstrap.sh
+
+      - name: Doctor
+        run: make doctor
+
+      - name: Test
+        run: make test
+
+      - name: Readiness
+        run: make benchmark-readiness
+
+      - name: Upload readiness logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readiness-logs
+          path: benchforge-blueprint/.benchforge/readiness/
+          if-no-files-found: ignore

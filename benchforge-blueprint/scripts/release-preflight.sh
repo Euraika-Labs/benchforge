@@ -93,6 +93,41 @@ for template in sorted((repo_root / ".github" / "ISSUE_TEMPLATE").glob("*.yml"))
             if key not in parsed:
                 errors.append(f"GitHub issue template missing {key}: {template}")
 
+ci_workflow = repo_root / ".github" / "workflows" / "ci.yml"
+ci_text = require_file(ci_workflow, "GitHub Actions CI workflow")
+if ci_text:
+    try:
+        ci_parsed = yaml.safe_load(ci_text)
+    except Exception as exc:  # noqa: BLE001 - report exact workflow path.
+        errors.append(f"invalid GitHub Actions workflow YAML {ci_workflow}: {exc}")
+        ci_parsed = {}
+    if not isinstance(ci_parsed, dict):
+        errors.append(f"GitHub Actions workflow must be a mapping: {ci_workflow}")
+        ci_parsed = {}
+    jobs = ci_parsed.get("jobs") if isinstance(ci_parsed.get("jobs"), dict) else {}
+    if not jobs:
+        errors.append("GitHub Actions CI workflow must define at least one job")
+    runs_on_values = [
+        str(job.get("runs-on", ""))
+        for job in jobs.values()
+        if isinstance(job, dict)
+    ]
+    if not any("macos" in value.lower() for value in runs_on_values):
+        errors.append("GitHub Actions CI workflow must include a macOS job for the Tauri app")
+    run_commands: list[str] = []
+    for job in jobs.values():
+        if not isinstance(job, dict):
+            continue
+        for step in job.get("steps", []):
+            if isinstance(step, dict) and isinstance(step.get("run"), str):
+                run_commands.append(step["run"])
+    joined_runs = "\n".join(run_commands)
+    for command in ("./scripts/bootstrap.sh", "make doctor", "make test", "make benchmark-readiness"):
+        if command not in joined_runs:
+            errors.append(f"GitHub Actions CI workflow must run {command!r}")
+    if "brew install llama.cpp" not in joined_runs:
+        errors.append("GitHub Actions CI workflow must install llama.cpp for the Hugging Face local readiness gate")
+
 package_json = json.loads(require_file(root / "app-scaffold" / "package.json", "web package manifest") or "{}")
 if package_json.get("private") is not True:
     warnings.append("app-scaffold/package.json should remain private unless publishing the npm package intentionally")
