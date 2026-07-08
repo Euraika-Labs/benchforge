@@ -484,7 +484,7 @@ export default function App() {
       case 'settings':
         return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} />;
       default:
-        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} openRunBuilder={openRunBuilder} />;
+        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} />;
     }
   }, [page, targets, adapters, packs, packDiagnostics, checks, diagnostics, results, runJobs, downloadJobs, serverJobs, artifacts, selectedRunId, selectedResult, artifactText, runBuilderIntent, targetRepairIntent, resultsScopeIntent, busy]);
 
@@ -515,7 +515,7 @@ export default function App() {
   );
 }
 
-function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, setPage, openRunBuilder }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void }) {
+function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, setPage, setMessage, openRunBuilder }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void }) {
   const errors = checks.filter(c => c.status === 'error').length;
   const warnings = checks.filter(c => c.status === 'warn').length;
   const passed = results.filter(result => result.status === 'passed').length;
@@ -540,6 +540,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const compareCheck = dashboardCheck(checks, 'benchmark-local-cloud-compare', 'Local + cloud comparison', 'warn', 'Add one local and one cloud target');
   const comparisonResultCheck = dashboardCheck(checks, 'benchmark-local-cloud-results', 'Local + cloud result', 'warn', compareCheck.status === 'ok' ? 'Run a local + cloud comparison' : 'Add one local and one cloud target');
   const comparisonEvidenceCheck = dashboardCheck(checks, 'benchmark-local-cloud-evidence', 'Evidence quality', 'warn', comparisonResultCheck.status === 'ok' ? 'Run 3 repetitions per task/target' : 'Run a local + cloud comparison');
+  const nextBenchmarkStep = dashboardCheck(checks, 'benchmark-next-step', 'Next benchmark step', 'warn', 'Add one local model target and one cloud model target');
   const packCheck = dashboardCheck(checks, 'benchmark-packs', 'Benchmark packs', packs.length ? 'ok' : 'error', packs.length ? `${packs.length} packs available` : 'No packs found');
   const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
   const sandboxCheck = dashboardSandboxCheck(checks);
@@ -547,12 +548,14 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const comparisonReady = compareCheck.status === 'ok';
   const recommendedComparisonPack = useMemo(() => recommendedComparisonPackId(packs), [packs]);
   const hasReliabilityPack = packs.some(pack => pack.id === 'llm-reliability');
+  const primaryBenchmarkActionLabel = comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
   function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
-    if (comparisonReady && recommendedTargetIds.length >= 2) {
+    if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && recommendedTargetIds.length >= 2) {
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId));
+      setMessage(`Run Builder ready for local/cloud comparison: ${recommendedTargetIds.length} target(s), ${benchmarkPackLabel(benchmarkPackId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
       return;
     }
-    setPage(comparisonReady ? 'runs' : 'doctor');
+    setPage(nextBenchmarkStep.command ? nextBenchmarkStepPage(nextBenchmarkStep) : 'doctor');
   }
   return <section><h1>Dashboard</h1><div className="grid">
     <Card title="Targets" value={targets.length} note="configured" />
@@ -578,7 +581,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       <div className="actions">
         <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
         <button onClick={() => setPage('targets')}><Boxes size={14} />Cloud target</button>
-        <button onClick={() => openComparisonRun()}><Play size={14} />{comparisonReady ? 'Run model comparison' : 'Open readiness checks'}</button>
+        <button onClick={() => openComparisonRun()}>{comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{primaryBenchmarkActionLabel}</button>
         <button disabled={!comparisonReady || !hasReliabilityPack} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
         <button disabled={comparisonResultCheck.status !== 'ok'} onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
       </div>
@@ -4249,6 +4252,14 @@ function BenchmarkNextStepPanel({ checks, openBenchmarkStep }: { checks: DoctorC
       {stepChecks.map(check => <span key={check.id} className={check.status}><strong>{check.label}</strong>{check.status}</span>)}
     </div>
   </div>;
+}
+
+function dashboardBenchmarkStepLabel(check: DoctorCheck) {
+  return check.command ? nextBenchmarkStepLabel(check) : 'Open readiness checks';
+}
+
+function dashboardBenchmarkStepIcon(check: DoctorCheck) {
+  return check.command ? nextBenchmarkStepIcon(check) : <ShieldCheck size={14} />;
 }
 
 function nextBenchmarkStepPage(check: DoctorCheck): Page {
