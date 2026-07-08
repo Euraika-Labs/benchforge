@@ -183,6 +183,7 @@ const automaticConnectivityMaxCostUsd = 0.05;
 const defaultComparisonMaxCostUsd = 1.0;
 const connectivityBenchmarkPackId = 'llm-connectivity';
 const defaultModelComparisonPackId = 'llm-basics';
+const preferredCloudSetupAdapterIds = ['openrouter', 'openai', 'anthropic', 'mistral', 'gemini', 'azure-openai', 'openai-compatible'];
 const fallbackModelBenchmarkPacks = [
   { id: 'llm-basics', label: 'LLM Basics' },
   { id: 'llm-core', label: 'LLM Core' },
@@ -497,7 +498,7 @@ export default function App() {
       case 'doctor':
         return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
       case 'settings':
-        return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} />;
+        return <SettingsPage busy={busy} targets={targets} adapters={adapters} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
       default:
         return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
     }
@@ -571,6 +572,9 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     openTargetSetup({ code: 'local_runtime_detect' });
     setMessage('Detecting local runtimes from Dashboard');
   }
+  function openCloudTargetSetup() {
+    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
+  }
   function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
     if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && recommendedTargetIds.length >= 2) {
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId));
@@ -593,6 +597,10 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     }
     if (nextBenchmarkStep.command.startsWith('Settings') && localRuntimeCheck.check.status === 'ok') {
       openLocalRuntimeDetection();
+      return;
+    }
+    if (nextBenchmarkStep.command.startsWith('Targets')) {
+      openCloudTargetSetup();
       return;
     }
     setPage(nextBenchmarkStep.command ? nextBenchmarkStepPage(nextBenchmarkStep) : 'doctor');
@@ -621,7 +629,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       <div className="actions">
         <button onClick={openLocalRuntimeDetection}><Search size={14} />Detect runtime</button>
         <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
-        <button onClick={() => setPage('targets')}><Boxes size={14} />Cloud target</button>
+        <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
         <button onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{primaryBenchmarkActionLabel}</button>
         <button disabled={!comparisonReady || comparisonNeedsPricing || !hasReliabilityPack} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
         <button disabled={comparisonResultCheck.status !== 'ok'} onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
@@ -1011,6 +1019,15 @@ function dashboardBaseUrlLooksRemote(baseUrl: string) {
 
 function stringValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function preferredCloudSetupAdapterId(adapters: Adapter[]) {
+  const availableIds = new Set(adapters.map(adapter => adapter.id));
+  const preferred = preferredCloudSetupAdapterIds.find(id => availableIds.has(id));
+  if (preferred) {
+    return preferred;
+  }
+  return adapters.find(adapter => ['openai_compatible', 'openai_responses', 'anthropic_messages', 'mistral_api', 'azure_openai'].includes(adapter.kind))?.id ?? 'openrouter';
 }
 
 function dashboardCheck(checks: DoctorCheck[], id: string, label: string, status: DoctorCheck['status'], detail: string): DoctorCheck {
@@ -7957,7 +7974,7 @@ function parseOptionalIntegerInRange(value: string, label: string, min: number, 
   return parsed;
 }
 
-function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, setPage, openRunBuilder, openResultsForGroup, openTargetRepair }: { busy: boolean; targets: Target[]; packs: BenchmarkPack[]; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void }) {
+function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, refresh, openRunBuilder, openResultsForGroup, openTargetRepair, openTargetSetup }: { busy: boolean; targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
   const [hf, setHf] = useState<HuggingFaceStatus | null>(null);
   const [token, setToken] = useState('');
   const [repoId, setRepoId] = useState('');
@@ -8014,7 +8031,7 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, setP
       setMessage(`Add input/output pricing before automatic local/cloud comparison: ${previewList(unpricedCloudComparisonTargetIds)}`);
       return;
     }
-    setPage('targets');
+    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
   }
 
   async function refreshHf() {
