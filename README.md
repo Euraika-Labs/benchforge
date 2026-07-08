@@ -267,9 +267,10 @@ After adding a target, run Validate before benchmarking. Validation records heal
 1. Open Targets and choose a cloud adapter such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Google Gemini.
 2. Paste the API key. BenchForge stores it in macOS Keychain.
 3. Search the provider catalog when available, or enter a model manually.
-4. Validate the target with a tiny completion probe.
-5. Choose a benchmark pack, repetitions, warmups, concurrency, and a max-cost cap. BenchForge blocks capped cloud runs when pricing is missing.
-6. Run the benchmark and compare results by target, provider, model, pack, task, run group, and status.
+4. Use the built-in provider URL unless you are configuring Azure OpenAI, a proxy, or a generic OpenAI-compatible endpoint.
+5. Validate the target with a tiny completion probe.
+6. Choose a benchmark pack, repetitions, warmups, concurrency, and a max-cost cap. BenchForge blocks capped cloud runs when pricing is missing.
+7. Run the benchmark and compare results by target, provider, model, pack, task, run group, and status.
 
 Live provider probes are outside the default readiness gate and skip cleanly when no provider key is configured.
 

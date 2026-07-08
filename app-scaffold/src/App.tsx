@@ -1233,6 +1233,19 @@ function providerKeychainId(adapter: Adapter, configuredBaseUrl = '') {
   return adapter.id;
 }
 
+function targetFormBaseUrlIsPrimary(adapter?: Adapter) {
+  if (!adapter) {
+    return false;
+  }
+  if (adapter.kind === 'azure_openai' || adapter.id === 'openai-compatible') {
+    return true;
+  }
+  if (!adapter.defaultBaseUrl) {
+    return true;
+  }
+  return localModelAdapters.has(adapter.id) || dashboardBaseUrlLooksLocal(adapter.defaultBaseUrl);
+}
+
 function providerKeyStatus(needsApiKey: boolean, checking: boolean, available: boolean, pendingKey: string, pendingEnv: string, detail: string) {
   if (!needsApiKey) {
     return { label: 'optional', className: 'ok', detail: 'local or compatible endpoint can run without a stored cloud key' };
@@ -1361,6 +1374,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const modelPresets = useMemo(() => adapterModelPresets(selectedAdapter), [selectedAdapter]);
   const selectedModelPreset = modelPresets.find(preset => preset.id === modelPresetId);
   const needsApiKey = adapterNeedsApiKey(selectedAdapter, baseUrl);
+  const baseUrlIsPrimary = targetFormBaseUrlIsPrimary(selectedAdapter);
   const selectedProviderKeychainId = selectedAdapter ? providerKeychainId(selectedAdapter, baseUrl) : '';
   const editingTarget = targets.find(target => target.id === editingTargetId);
   const editingHarnessTarget = targets.find(target => target.id === editingHarnessTargetId);
@@ -2435,13 +2449,14 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         }}>{runnableAdapters.map(adapter => <option key={adapter.id} value={adapter.id}>{adapter.name}</option>)}</select></label>
         <label>Model preset <select value={modelPresetId} onChange={event => applyModelPreset(event.target.value)} disabled={!modelPresets.length}><option value="custom">Custom model</option>{modelPresets.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
         <label>Model <input value={model} onChange={event => handleModelChange(event.target.value)} placeholder={selectedAdapter?.id === 'azure-openai' ? 'Azure deployment name' : 'gpt-4.1-mini, claude-sonnet-4-5, qwen2.5-coder'} /></label>
-        <label>Name <input value={targetName} onChange={event => setTargetName(event.target.value)} placeholder="optional display name" /></label>
-        <label>Base URL <input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={selectedAdapter?.defaultBaseUrl ?? 'optional'} /></label>
+        {baseUrlIsPrimary ? <label>Base URL <input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={selectedAdapter?.defaultBaseUrl ?? 'optional'} /></label> : null}
         <label>API key <input type="password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={editingTargetId ? 'leave blank to keep saved key' : needsApiKey ? 'saved to Keychain' : 'optional for local endpoints'} /></label>
         <div className="key-status"><span className={`pill ${providerKeyState.className}`}>{providerKeyState.label}</span><span>{providerKeyState.detail}</span>{needsApiKey ? <button type="button" disabled={providerKeyStatusBusy} onClick={() => refreshSelectedProviderKeyStatus().catch(error => setMessage(String(error)))}><RefreshCw size={14} /></button> : null}</div>
         <details className="advanced-section" open={targetAdvancedOpen} onToggle={event => setTargetAdvancedOpen(event.currentTarget.open)}>
           <summary><SlidersHorizontal size={14} />Advanced</summary>
           <div className="form-grid">
+            <label>Name <input value={targetName} onChange={event => setTargetName(event.target.value)} placeholder="optional display name" /></label>
+            {!baseUrlIsPrimary ? <label>Base URL <input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={selectedAdapter?.defaultBaseUrl ?? 'optional'} /></label> : null}
             <label>API key env <input value={apiKeyEnv} onChange={event => setApiKeyEnv(event.target.value)} placeholder={editingTargetPreserveApiKeyEnvRef ? 'leave blank to keep env ref' : 'optional, e.g. OPENAI_API_KEY'} /></label>
             <label>Temperature <input type="number" min="0" max="2" step="0.1" value={temperature} onChange={event => setTemperature(event.target.value)} placeholder="0" /></label>
             <label>Top P <input type="number" min="0" max="1" step="0.05" value={topP} onChange={event => setTopP(event.target.value)} placeholder="1" /></label>
