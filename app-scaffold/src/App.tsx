@@ -2216,7 +2216,12 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const targetRequest = { id, name, kind: 'direct_model', adapterId: selectedAdapter.id, config };
     if (!wasEditing) {
       const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
-      const plannedTarget = plannedModelTarget(id, name, selectedAdapter.id, baseUrl);
+      const plannedTarget = plannedModelTarget(id, name, selectedAdapter.id, baseUrl, {
+        inputPriceUsdPerMillionTokens: parsedInputPrice.value,
+        outputPriceUsdPerMillionTokens: parsedOutputPrice.value,
+        cacheReadPriceUsdPerMillionTokens: parsedCacheReadPrice.value,
+        cacheWritePriceUsdPerMillionTokens: parsedCacheWritePrice.value,
+      });
       const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targets, packId);
       const handoff = await createTargetWithBenchmarkHandoff(
         targetRequest,
@@ -7756,7 +7761,13 @@ function automaticModelBenchmarkIntentForTarget(target: Target, targets: Target[
   return automaticModelRunBuilderIntent(target, benchmarkPackId);
 }
 
-function plannedModelTarget(id: string, name: string, adapterId: string, baseUrl: string): Target {
+function plannedModelTarget(
+  id: string,
+  name: string,
+  adapterId: string,
+  baseUrl: string,
+  pricing: Partial<Pick<Target, 'inputPriceUsdPerMillionTokens' | 'outputPriceUsdPerMillionTokens' | 'cacheReadPriceUsdPerMillionTokens' | 'cacheWritePriceUsdPerMillionTokens'>> = {},
+): Target {
   const classification = plannedModelTargetClassification(adapterId, baseUrl);
   return {
     id,
@@ -7767,6 +7778,7 @@ function plannedModelTarget(id: string, name: string, adapterId: string, baseUrl
     enabled: true,
     isLocalModel: classification.local,
     isCloudModel: classification.cloud,
+    ...pricing,
   };
 }
 
