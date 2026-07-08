@@ -3136,6 +3136,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const [estimateError, setEstimateError] = useState('');
   const [runValidationBlockers, setRunValidationBlockers] = useState<TargetValidation[]>([]);
   const autoSeedRunBuilderDefaultsRef = useRef(false);
+  const autoApplyComparisonDefaultsRef = useRef('');
   const activeJob = jobs.find(job => job.id === activeJobId);
   const activeRunInProgress = Boolean(activeJob && isJobActive(activeJob));
   const selectedPack = packs.find(pack => pack.id === selectedPackId);
@@ -3168,6 +3169,8 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const selectedTargets = targets.filter(target => selected.includes(target.id));
   const selectedLocalTargets = selectedTargets.filter(target => isLocalModelTarget(target));
   const selectedCloudTargets = selectedTargets.filter(target => isCloudModelTarget(target));
+  const comparisonDefaultsRecommended = Boolean(selectedPack && selectedLocalTargets.length && selectedCloudTargets.length && packUsesModelSelectionDefaults(selectedPack));
+  const recommendedComparisonConcurrency = Math.min(2, Math.max(1, selectedTargets.length));
   const parsedRepetitions = parsePositiveIntegerInRange(repetitions, 'Repetitions', 1, 100);
   const parsedWarmupRuns = parsePositiveIntegerInRange(warmupRuns, 'Warmup runs', 0, 20);
   const parsedConcurrency = parsePositiveIntegerInRange(concurrency, 'Concurrency', 1, 8);
@@ -3334,6 +3337,33 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
     setSelectedTaskIds(nextTaskIds);
     setMessage(`Run Builder selected ${nextTaskIds.length} task(s) from coverage follow-up`);
   }, [pendingTaskIntent, selectedPackId, tasksLoading, taskError, packTasks, setMessage]);
+
+  useEffect(() => {
+    if (!comparisonDefaultsRecommended || runBuilderIntent) {
+      return;
+    }
+    if (repetitions !== '1' || warmupRuns !== '0' || concurrency !== '1') {
+      return;
+    }
+    const signature = `${selectedPackId}:${selected.slice().sort().join(',')}`;
+    if (autoApplyComparisonDefaultsRef.current === signature) {
+      return;
+    }
+    autoApplyComparisonDefaultsRef.current = signature;
+    setRepetitions(String(recommendedTaskRepetitions));
+    setWarmupRuns('1');
+    setConcurrency(String(recommendedComparisonConcurrency));
+    if (!maxCostUsd) {
+      setMaxCostUsd(String(defaultComparisonMaxCostUsd));
+    }
+    const existingCap = Number(maxCostUsd);
+    const capNote = maxCostUsd
+      ? Number.isFinite(existingCap)
+        ? `, existing ${formatCost(existingCap)} cap`
+        : ', existing custom cap'
+      : `, ${formatCost(defaultComparisonMaxCostUsd)} cap`;
+    setMessage(`Run Builder applied comparison defaults: ${recommendedTaskRepetitions} repetitions, 1 warmup, concurrency ${recommendedComparisonConcurrency}${capNote}`);
+  }, [comparisonDefaultsRecommended, runBuilderIntent, repetitions, warmupRuns, concurrency, maxCostUsd, selectedPackId, selected, recommendedComparisonConcurrency, setMessage]);
 
   useEffect(() => {
     if (!selected.length || !selectedPackId || !selectedTaskIds.length || tasksLoading || taskError || compatibilityError || unavailableTargetError || parsedRepetitions.error || parsedWarmupRuns.error || parsedConcurrency.error || parsedRepetitions.value == null || parsedWarmupRuns.value == null || parsedConcurrency.value == null) {
@@ -3609,6 +3639,16 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
     setMaxCostUsd(String(value));
     setMessage(`Set max-cost cap to ${formatCost(value)} for selected cloud target(s)`);
   }
+  function applyRecommendedComparisonDefaults() {
+    setRepetitions(String(recommendedTaskRepetitions));
+    setWarmupRuns('1');
+    setConcurrency(String(recommendedComparisonConcurrency));
+    if (selectedCloudTargets.length && !maxCostUsd) {
+      setMaxCostUsd(String(defaultComparisonMaxCostUsd));
+    }
+    const capNote = selectedCloudTargets.length && !maxCostUsd ? ` and ${formatCost(defaultComparisonMaxCostUsd)} cap` : '';
+    setMessage(`Applied comparison defaults: ${recommendedTaskRepetitions} repetitions, 1 warmup, concurrency ${recommendedComparisonConcurrency}${capNote}`);
+  }
   function setTaskSelected(taskId: string, checked: boolean) {
     setSelectedTaskIds(current => {
       const next = new Set(current);
@@ -3662,7 +3702,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
       {selectedPack ? <PackRunReadiness pack={selectedPack} docker={docker} /> : null}
       {comparisonRunReadiness ? <LocalCloudRunReadinessPanel readiness={comparisonRunReadiness} onSetCostCap={applyRecommendedCostCap} onRepairPricing={repairRunPricingBlockers} /> : null}
       {runValidationBlockers.length ? <RunValidationBlockerPanel blockers={runValidationBlockers} targets={targets} onRepair={repairRunValidationBlocker} /> : null}
-      {repetitionConfidenceWarning ? <div className="preflight-box warn"><strong>Repetition Confidence</strong><p>{repetitionConfidenceWarning}</p></div> : null}
+      {repetitionConfidenceWarning ? <div className="preflight-box warn"><strong>Repetition Confidence</strong><p>{repetitionConfidenceWarning}</p>{comparisonDefaultsRecommended ? <div className="row-actions"><button onClick={applyRecommendedComparisonDefaults}><ShieldCheck size={14} />Use 3 reps + warmup</button></div> : null}</div> : null}
       {runScaleWarning ? <div className="preflight-box warn"><strong>Large Run</strong><p>{runScaleWarning}</p></div> : null}
       {runSettingsError ? <p className="muted">{runSettingsError}</p> : <RunEstimatePanel estimate={runEstimate} error={estimateError} fallbackRuns={estimatedRuns} fallbackWarmups={estimatedWarmups} selectedTargets={selected.length} packTasks={selectedTaskCount} repetitions={parsedRepetitions.value ?? 1} concurrency={parsedConcurrency.value ?? 1} maxCostUsd={parsedMaxCostUsd.value} />}
       <div className="row-actions target-shortcuts">
@@ -7567,6 +7607,12 @@ function automaticModelBenchmarkSettings(packId: string) {
     return { repetitions: 1, warmupRuns: 0, concurrency: 1 };
   }
   return { repetitions: 3, warmupRuns: 1, concurrency: 1 };
+}
+
+function packUsesModelSelectionDefaults(pack: BenchmarkPack) {
+  return pack.taskTypes.includes('prompt')
+    && pack.id !== connectivityBenchmarkPackId
+    && pack.evidenceProfile !== 'connectivity_smoke';
 }
 
 function automaticModelBenchmarkMaxCostUsd(packId: string) {

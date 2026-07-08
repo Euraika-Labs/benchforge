@@ -176,7 +176,7 @@ Choose the fastest path for the thing you want to prove:
 1. Run `make doctor` and fix required tools before adding targets.
 2. Add at least one target: a local runtime such as Hugging Face GGUF, Ollama, LM Studio, or `llama.cpp`, or a cloud provider such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Gemini.
 3. Validate the target. Validation runs a tiny probe and stores the latest health result so full benchmark runs fail less mysteriously.
-4. Choose a benchmark pack and repetitions. All pack tasks are selected by default; expand Tasks only when you want a subset. Advanced run settings keep warmups, concurrency, Docker scoring, and paid-provider cost caps available when needed.
+4. Choose a benchmark pack. All pack tasks are selected by default; expand Tasks only when you want a subset. Local/cloud prompt comparisons use 3 repetitions, 1 warmup, and a default cost cap unless you intentionally customize them. Advanced run settings keep warmups, concurrency, Docker scoring, and paid-provider cost caps available when needed.
 5. Run the benchmark from the app. BenchForge stores runs in SQLite and writes artifacts under `.benchforge/runs/`.
 6. Compare targets on the Results page by pass rate, weighted score, latency, cost, throughput, model identity, coverage, and evidence grade.
 7. Export a report folder when you need a portable review package with CSV, JSONL, Analysis JSON, copied artifacts, and reproducibility metadata.
@@ -206,7 +206,7 @@ In the desktop app, open Settings, save `HF_TOKEN` if the model is gated, then u
 
 1. Add and validate a local OpenAI-compatible target, such as Ollama, LM Studio, or `llama.cpp`.
 2. Add and validate a cloud target, such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Gemini.
-3. On the Dashboard, click **Run model comparison** to validate and run the recommended local/cloud pair with the capped default pack. Use the Run Builder **Local + cloud** shortcut when you want to include every comparable local target and priced cloud target. Shortcuts prefer cloud targets with input/output pricing so capped runs can estimate spend.
+3. On the Dashboard, click **Run model comparison** to validate and run the recommended local/cloud pair with the capped default pack. Use the Run Builder **Local + cloud** shortcut when you want to include every comparable local target and priced cloud target. Manual local/cloud prompt selections also move untouched quick defaults to 3 repetitions, 1 warmup, and the default cap. Shortcuts prefer cloud targets with input/output pricing so capped runs can estimate spend.
 4. Compare pass rate, score, p95 latency, throughput, cost, served model identity, and evidence warnings in Results.
 
 ## Configure Secrets
