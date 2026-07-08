@@ -3999,7 +3999,7 @@ pub fn run_cli_worker_harness_contract_smoke() -> Result<(), String> {
         adapter_id: "benchforge-worker".into(),
         config_json: serde_json::to_string(&serde_json::json!({
             "harness": {
-                "command": [python, script_path.to_string_lossy()],
+                "command": [python.clone(), script_path.to_string_lossy()],
                 "timeout_seconds": 5
             }
         }))
@@ -4018,6 +4018,45 @@ pub fn run_cli_worker_harness_contract_smoke() -> Result<(), String> {
         &command_result,
         &command_provider_results,
         &command_artifacts,
+    )?;
+
+    let unparsed_script_path = write_worker_harness_unparsed_contract_script()?;
+    let unparsed_target = store::TargetRecord {
+        id: "contract-worker-harness-unparsed".into(),
+        name: "Contract Worker Harness Unparsed".into(),
+        kind: "benchmark_harness".into(),
+        adapter_id: "benchforge-worker".into(),
+        config_json: serde_json::to_string(&serde_json::json!({
+            "harness": {
+                "command": [python, unparsed_script_path.to_string_lossy()],
+                "timeout_seconds": 5
+            }
+        }))
+        .map_err(|err| err.to_string())?,
+        enabled: true,
+        validation_status: None,
+        validation_detail: None,
+        validation_checked_at: None,
+    };
+
+    let unparsed_result = run_task(
+        &conn,
+        &unparsed_target,
+        &pack,
+        &task,
+        false,
+        0,
+        1,
+        None,
+        &|| false,
+    )?;
+    let unparsed_provider_results = store::list_results(&conn).map_err(|err| err.to_string())?;
+    let unparsed_artifacts =
+        store::list_artifacts(&conn, Some(&unparsed_result.id)).map_err(|err| err.to_string())?;
+    validate_worker_harness_unparsed_contract_result(
+        &unparsed_result,
+        &unparsed_provider_results,
+        &unparsed_artifacts,
     )?;
 
     let mut import_task = task.clone();
@@ -4160,6 +4199,7 @@ pub fn run_cli_worker_harness_contract_smoke() -> Result<(), String> {
         },
     )?;
     let _ = fs::remove_file(script_path);
+    let _ = fs::remove_file(unparsed_script_path);
     println!(
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({
@@ -4167,6 +4207,9 @@ pub fn run_cli_worker_harness_contract_smoke() -> Result<(), String> {
             "commandResult": command_result,
             "commandProviderResults": command_provider_results,
             "commandArtifacts": command_artifacts,
+            "unparsedResult": unparsed_result,
+            "unparsedProviderResults": unparsed_provider_results,
+            "unparsedArtifacts": unparsed_artifacts,
             "importResult": import_result,
             "importProviderResults": import_provider_results,
             "importArtifacts": import_artifacts,
@@ -4206,6 +4249,20 @@ fn write_worker_harness_contract_script() -> Result<PathBuf, String> {
     fs::write(
         &script_path,
         "import json, sys\nprint(json.dumps({'total': 4, 'passed': 2, 'failed': 2, 'score': 0.5}))\nsys.exit(1)\n",
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(script_path)
+}
+
+fn write_worker_harness_unparsed_contract_script() -> Result<PathBuf, String> {
+    fs::create_dir_all(paths::app_data_dir()).map_err(|err| err.to_string())?;
+    let script_path = paths::app_data_dir().join(format!(
+        "worker-harness-unparsed-contract-{}.py",
+        uuid::Uuid::new_v4().simple()
+    ));
+    fs::write(
+        &script_path,
+        "print('completed without benchmark summary')\n",
     )
     .map_err(|err| err.to_string())?;
     Ok(script_path)
@@ -5109,6 +5166,122 @@ fn validate_worker_harness_contract_result(
     } else {
         Err(format!(
             "worker_harness_contract_failed: {}",
+            failures.join("; ")
+        ))
+    }
+}
+
+fn validate_worker_harness_unparsed_contract_result(
+    result: &RunResultDto,
+    provider_results: &[store::ResultRecord],
+    artifacts: &[store::ArtifactRecord],
+) -> Result<(), String> {
+    let mut failures = Vec::new();
+    if result.status != "error" {
+        failures.push(format!("unparsed result status was {}", result.status));
+    }
+    if result.score.is_some() {
+        failures.push(format!("unparsed result score was {:?}", result.score));
+    }
+    if !result
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("recognizable score or test summary")
+    {
+        failures.push(format!(
+            "unparsed result error was {:?}",
+            result.error.as_deref()
+        ));
+    }
+    for expected in [
+        "stdout.txt",
+        "stderr.txt",
+        "worker-result.jsonl",
+        "result.json",
+        "target-config.json",
+        "run-config.json",
+        "evalplus-raw-output.txt",
+    ] {
+        if !result.artifacts.iter().any(|artifact| artifact == expected) {
+            failures.push(format!("missing unparsed returned artifact {}", expected));
+        }
+    }
+    let Some(record) = provider_results
+        .iter()
+        .find(|record| record.id == result.id)
+    else {
+        failures.push("stored unparsed result not found".into());
+        return Err(format!(
+            "worker_harness_unparsed_contract_failed: {}",
+            failures.join("; ")
+        ));
+    };
+    if record.status != "error" {
+        failures.push(format!("stored unparsed status was {}", record.status));
+    }
+    if record.error_code.as_deref() != Some("harness_unparsed") {
+        failures.push(format!(
+            "stored unparsed error code was {:?}",
+            record.error_code.as_deref()
+        ));
+    }
+    if record.harness_exit_code != Some(0.0) {
+        failures.push(format!(
+            "stored unparsed harness exit code was {:?}",
+            record.harness_exit_code
+        ));
+    }
+    if record.score.is_some() || record.score_numeric.is_some() {
+        failures.push(format!(
+            "stored unparsed score was score={:?} score_numeric={:?}",
+            record.score, record.score_numeric
+        ));
+    }
+    if record.pass_fail != Some(false) {
+        failures.push(format!(
+            "stored unparsed pass/fail was {:?}",
+            record.pass_fail
+        ));
+    }
+    let artifact_kinds = artifacts
+        .iter()
+        .map(|artifact| artifact.kind.as_str())
+        .collect::<Vec<_>>();
+    for expected in ["worker_jsonl", "result_json", "harness_raw_output"] {
+        if !artifact_kinds.contains(&expected) {
+            failures.push(format!(
+                "missing unparsed stored artifact kind {}",
+                expected
+            ));
+        }
+    }
+    if let Some(result_artifact) = artifacts
+        .iter()
+        .find(|artifact| artifact.kind == "result_json")
+    {
+        let result_json = fs::read_to_string(&result_artifact.path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        if result_json
+            .pointer("/error_code")
+            .and_then(|value| value.as_str())
+            != Some("harness_unparsed")
+            || result_json
+                .pointer("/metrics/harness_exit_code")
+                .and_then(|value| value.as_i64())
+                != Some(0)
+        {
+            failures.push("unparsed result JSON did not include expected error contract".into());
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "worker_harness_unparsed_contract_failed: {}",
             failures.join("; ")
         ))
     }

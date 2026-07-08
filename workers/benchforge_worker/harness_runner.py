@@ -237,8 +237,12 @@ def run(args: argparse.Namespace, kind: str) -> int:
         error_code = "benchmark_failed"
         error_message = f"{kind} completed with benchmark failures"
     elif status == "error":
-        error_code = "harness_failed"
-        error_message = f"{kind} harness exited with {completed.returncode}"
+        if completed.returncode == 0 and not summary_has_benchmark_evidence(summary):
+            error_code = "harness_unparsed"
+            error_message = f"{kind} harness exited successfully but did not emit a recognizable score or test summary"
+        else:
+            error_code = "harness_failed"
+            error_message = f"{kind} harness exited with {completed.returncode}"
 
     result = finish_event(
         run_id,
@@ -1383,9 +1387,23 @@ def status_from_result(returncode: int, summary: dict[str, Any]) -> str:
     score = summary.get("score")
     if isinstance(score, (int, float)) and float(score) < 1.0:
         return "failed"
+    if not summary_has_benchmark_evidence(summary):
+        return "error"
     if returncode == 0:
         return "passed"
     return "error"
+
+
+def summary_has_benchmark_evidence(summary: dict[str, Any]) -> bool:
+    total = summary.get("total")
+    passed = summary.get("passed")
+    failed = summary.get("failed")
+    score = summary.get("score")
+    if isinstance(score, (int, float)):
+        return True
+    if isinstance(total, int) and total > 0:
+        return True
+    return isinstance(passed, int) and isinstance(failed, int) and (passed + failed) > 0
 
 
 def finish_event(

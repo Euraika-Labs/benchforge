@@ -242,6 +242,70 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(event["score"], 0.5)
             self.assertEqual(event["error_code"], "benchmark_failed")
 
+    def test_external_harness_zero_exit_without_summary_is_error_not_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            tool = self.write_tool(
+                temp_dir,
+                "fake-green-empty-harness",
+                "print('completed without benchmark summary')\n",
+            )
+            target_config = temp_dir / "target.json"
+            target_config.write_text(json.dumps({"harness": {"command": [str(tool)]}}), encoding="utf-8")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "terminal-bench",
+                "--target-config",
+                str(target_config),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 2, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "error")
+            self.assertIsNone(event["score"])
+            self.assertEqual(event["error_code"], "harness_unparsed")
+            self.assertIn("recognizable score or test summary", event["error_message"])
+            self.assertIsNone(event["tests"]["total"])
+            self.assertIsNone(event["tests"]["passed"])
+            self.assertIsNone(event["tests"]["failed"])
+
+    def test_external_harness_zero_exit_score_only_perfect_result_can_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            tool = self.write_tool(
+                temp_dir,
+                "fake-green-score-harness",
+                "import json\nprint(json.dumps({'score': 1.0}))\n",
+            )
+            target_config = temp_dir / "target.json"
+            target_config.write_text(json.dumps({"harness": {"command": [str(tool)]}}), encoding="utf-8")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "aider-polyglot",
+                "--target-config",
+                str(target_config),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "passed")
+            self.assertEqual(event["score"], 1.0)
+            self.assertIsNone(event["error_code"])
+
     def test_harness_command_templates_model_and_base_url(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
             temp_dir = Path(raw_dir)
