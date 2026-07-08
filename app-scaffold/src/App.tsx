@@ -1230,13 +1230,14 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const localComparisonTargetIds = enabledModelTargets.filter(isLocalModelTarget).map(target => target.id);
   const cloudComparisonTargets = enabledModelTargets.filter(isCloudModelTarget);
   const pricedCloudComparisonTargets = cloudComparisonTargets.filter(targetHasInputOutputPricing);
-  const preferredCloudComparisonTargetIds = (pricedCloudComparisonTargets.length ? pricedCloudComparisonTargets : cloudComparisonTargets).map(target => target.id);
-  const skippedUnpricedCloudTargetIds = pricedCloudComparisonTargets.length
-    ? cloudComparisonTargets.filter(target => !targetHasInputOutputPricing(target)).map(target => target.id)
+  const pricedCloudComparisonTargetIds = pricedCloudComparisonTargets.map(target => target.id);
+  const unpricedCloudComparisonTargets = cloudComparisonTargets.filter(target => !targetHasInputOutputPricing(target));
+  const skippedUnpricedCloudTargetIds = unpricedCloudComparisonTargets.map(target => target.id);
+  const allComparisonTargetIds = localComparisonTargetIds.length && pricedCloudComparisonTargetIds.length
+    ? [...localComparisonTargetIds, ...pricedCloudComparisonTargetIds]
     : [];
-  const allComparisonTargetIds = localComparisonTargetIds.length && preferredCloudComparisonTargetIds.length
-    ? [...localComparisonTargetIds, ...preferredCloudComparisonTargetIds]
-    : [];
+  const comparisonNeedsCloudPricing = Boolean(localComparisonTargetIds.length && cloudComparisonTargets.length && !pricedCloudComparisonTargetIds.length);
+  const comparisonActionDisabled = !localComparisonTargetIds.length || !cloudComparisonTargets.length;
 
   useEffect(() => {
     if (!modelBenchmarkPacks.length || modelBenchmarkPacks.some(pack => pack.id === comparisonPackId)) {
@@ -2170,7 +2171,25 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   }
 
   function comparisonIntentForTarget(target: Target): RunBuilderIntent | null {
-    return modelComparisonIntentForTarget(target, targets, comparisonPackId);
+    return modelComparisonIntentForTarget(target, targets, comparisonPackId, { requirePricedCloud: true });
+  }
+
+  function comparisonPricingRepairTarget(target: Target) {
+    if (!targetIsSelectableModel(target)) {
+      return null;
+    }
+    if (isCloudModelTarget(target)) {
+      return localComparisonTargetIds.length && !targetHasInputOutputPricing(target) ? target : null;
+    }
+    if (isLocalModelTarget(target) && !pricedCloudComparisonTargets.length) {
+      return unpricedCloudComparisonTargets[0] ?? null;
+    }
+    return null;
+  }
+
+  async function openPricingRepairForComparison(target: Target) {
+    await loadTargetForEdit(target);
+    setMessage(`Add input/output pricing for ${target.name} before opening a capped local/cloud comparison.`);
   }
 
   function openComparisonForTarget(target: Target) {
@@ -2193,23 +2212,25 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setMessage(`Run Builder ready to compare ${intent.targetIds.length} local/cloud target(s) with ${benchmarkPackLabel(intent.benchmarkPackId ?? comparisonPackId, modelBenchmarkPacks)}.${pricingNote}`);
   }
 
-  function openAllLocalCloudComparison() {
-    if (!allComparisonTargetIds.length) {
+  async function openAllLocalCloudComparison() {
+    if (!localComparisonTargetIds.length || !cloudComparisonTargets.length) {
       setMessage('Add at least one enabled local model target and one enabled cloud model target before comparing');
+      return;
+    }
+    if (!pricedCloudComparisonTargetIds.length) {
+      await openPricingRepairForComparison(cloudComparisonTargets[0]);
       return;
     }
     openRunBuilder(localCloudRunBuilderIntent(allComparisonTargetIds, comparisonPackId));
     const pricingNote = skippedUnpricedCloudTargetIds.length
       ? ` Skipped unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.`
-      : pricedCloudComparisonTargets.length
-        ? ' Selected priced cloud target(s) for cost-capped comparison.'
-        : ' Add cloud pricing before running with a max-cost cap.'
-    setMessage(`Run Builder ready to compare ${localComparisonTargetIds.length} local and ${preferredCloudComparisonTargetIds.length} cloud target(s) with ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)}.${pricingNote}`);
+      : ' Selected priced cloud target(s) for cost-capped comparison.';
+    setMessage(`Run Builder ready to compare ${localComparisonTargetIds.length} local and ${pricedCloudComparisonTargetIds.length} cloud target(s) with ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)}.${pricingNote}`);
   }
 
   const providerKeyState = providerKeyStatus(needsApiKey, providerKeyStatusBusy, providerKeyAvailable, apiKey, apiKeyEnv, providerKeyDetail);
 
-  return <section><div className="section-head"><h1>Targets</h1><div className="actions"><button disabled={validating === 'all'} onClick={() => validateAll().catch(error => setMessage(String(error)))}><RefreshCw size={16} />Validate all</button><label className="compact-select">Compare pack <select value={comparisonPackId} onChange={event => setComparisonPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label><button disabled={!allComparisonTargetIds.length} title={allComparisonTargetIds.length ? `Compare enabled local targets with ${preferredCloudComparisonTargetIds.length} cloud target(s); priced cloud targets are preferred for capped cost estimates` : 'Add one enabled local model target and one enabled cloud model target'} onClick={openAllLocalCloudComparison}><ClipboardCheck size={16} />Compare local/cloud</button><button onClick={() => addMock().catch(error => setMessage(String(error)))}><Plus size={16} />Mock target</button><button onClick={() => addWorkerHarness().catch(error => setMessage(String(error)))}><Plus size={16} />Worker harness</button></div></div>
+  return <section><div className="section-head"><h1>Targets</h1><div className="actions"><button disabled={validating === 'all'} onClick={() => validateAll().catch(error => setMessage(String(error)))}><RefreshCw size={16} />Validate all</button><label className="compact-select">Compare pack <select value={comparisonPackId} onChange={event => setComparisonPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label><button disabled={comparisonActionDisabled} title={comparisonActionDisabled ? 'Add one enabled local model target and one enabled cloud model target' : comparisonNeedsCloudPricing ? 'Add input/output pricing to a cloud target before opening a capped comparison' : `Compare enabled local targets with ${pricedCloudComparisonTargetIds.length} priced cloud target(s)`} onClick={() => openAllLocalCloudComparison().catch(error => setMessage(String(error)))}>{comparisonNeedsCloudPricing ? <Pencil size={16} /> : <ClipboardCheck size={16} />}{comparisonNeedsCloudPricing ? 'Add cloud pricing' : 'Compare local/cloud'}</button><button onClick={() => addMock().catch(error => setMessage(String(error)))}><Plus size={16} />Mock target</button><button onClick={() => addWorkerHarness().catch(error => setMessage(String(error)))}><Plus size={16} />Worker harness</button></div></div>
     <div className="panel compact">
       <div className="form-title"><h2>Model Target</h2>{editingTargetId ? <span className="mini-tag">Editing {editingTarget?.name ?? editingTargetId}</span> : null}</div>
       <div className="form-grid">
@@ -2316,12 +2337,13 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       const validation = validations[t.id] ?? targetValidationFromTarget(t);
       const editable = t.kind === 'direct_model' || t.kind === 'benchmark_harness';
       const comparisonIntent = comparisonIntentForTarget(t);
+      const pricingRepairTarget = comparisonPricingRepairTarget(t);
       const comparableModel = t.kind === 'direct_model' || t.kind === 'harnessed_model';
       const runnable = targetIsSelectableForRun(t);
       const targetEnabled = t.enabled !== false;
       const storedStatus = targetEnabled ? t.status : 'disabled';
       const storedStatusClass = targetEnabled ? t.status : 'warn';
-      return <tr key={t.id}><td>{t.name}</td><td>{t.kind}</td><td>{t.adapterId}</td><td><span className={`pill ${storedStatusClass}`}>{storedStatus}</span></td><td>{validation ? <><span className={`pill ${validation.status === 'ok' ? 'ok' : validation.status === 'error' ? 'error' : 'warn'}`}>{validation.status}</span> {validation.detail}{validation.checkedAt ? <div className="muted">Checked {formatDateTime(validation.checkedAt)}</div> : null}</> : <span className="muted">{targetEnabled ? 'not checked' : 'disabled'}</span>}</td><td><div className="row-actions"><button disabled={!runnable} title={runnable ? 'Open Run Builder with this target' : 'Enable and validate this target before running it'} onClick={() => { openRunBuilder(runBuilderIntentForTarget(t)); setMessage(`Run Builder ready for ${t.name}`); }}><Play size={14} />Run</button>{comparableModel ? <button disabled={!comparisonIntent} title={comparisonIntent ? 'Compare this target against the first available local/cloud counterpart' : 'Add an enabled target from the other side before comparing'} onClick={() => openComparisonForTarget(t)}><ClipboardCheck size={14} />Compare</button> : null}<button disabled={Boolean(loadingTargetId) || !editable || !targetEnabled} title={!targetEnabled ? 'Enable target before editing it' : editable ? 'Edit target' : 'This target type is not editable here'} onClick={() => { if (t.kind === 'benchmark_harness') { loadHarnessForEdit(t).catch(error => setMessage(String(error))); } else { loadTargetForEdit(t).catch(error => setMessage(String(error))); } }}><Pencil size={14} />{loadingTargetId === t.id ? 'Loading' : 'Edit'}</button><button disabled={Boolean(loadingTargetId)} title="Copy redacted target JSON without secrets" onClick={() => copyTargetConfig(t).catch(error => setMessage(String(error)))}><Copy size={14} />Config</button><button disabled={Boolean(validating) || !targetEnabled} onClick={() => validateOne(t.id).catch(error => setMessage(String(error)))}>{validating === t.id ? 'Checking' : 'Validate'}</button><button disabled={Boolean(validating) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : targetEnabled ? 'Disable target without deleting history' : 'Enable target'} onClick={() => toggleTargetEnabled(t).catch(error => setMessage(String(error)))}>{targetEnabled ? <Square size={14} /> : <Play size={14} />}{targetEnabled ? 'Disable' : 'Enable'}</button><button disabled={Boolean(validating) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : 'Delete target permanently'} onClick={() => removeTarget(t).catch(error => setMessage(String(error)))}><Trash2 size={14} />Delete</button></div></td></tr>;
+      return <tr key={t.id}><td>{t.name}</td><td>{t.kind}</td><td>{t.adapterId}</td><td><span className={`pill ${storedStatusClass}`}>{storedStatus}</span></td><td>{validation ? <><span className={`pill ${validation.status === 'ok' ? 'ok' : validation.status === 'error' ? 'error' : 'warn'}`}>{validation.status}</span> {validation.detail}{validation.checkedAt ? <div className="muted">Checked {formatDateTime(validation.checkedAt)}</div> : null}</> : <span className="muted">{targetEnabled ? 'not checked' : 'disabled'}</span>}</td><td><div className="row-actions"><button disabled={!runnable} title={runnable ? 'Open Run Builder with this target' : 'Enable and validate this target before running it'} onClick={() => { openRunBuilder(runBuilderIntentForTarget(t)); setMessage(`Run Builder ready for ${t.name}`); }}><Play size={14} />Run</button>{comparableModel ? <button disabled={!comparisonIntent && !pricingRepairTarget} title={comparisonIntent ? 'Compare this target against the first available priced local/cloud counterpart' : pricingRepairTarget ? 'Add input/output pricing before opening a capped local/cloud comparison' : 'Add an enabled target from the other side before comparing'} onClick={() => { if (comparisonIntent) { openComparisonForTarget(t); return; } if (pricingRepairTarget) { openPricingRepairForComparison(pricingRepairTarget).catch(error => setMessage(String(error))); } }}>{pricingRepairTarget && !comparisonIntent ? <Pencil size={14} /> : <ClipboardCheck size={14} />}{pricingRepairTarget && !comparisonIntent ? 'Pricing' : 'Compare'}</button> : null}<button disabled={Boolean(loadingTargetId) || !editable || !targetEnabled} title={!targetEnabled ? 'Enable target before editing it' : editable ? 'Edit target' : 'This target type is not editable here'} onClick={() => { if (t.kind === 'benchmark_harness') { loadHarnessForEdit(t).catch(error => setMessage(String(error))); } else { loadTargetForEdit(t).catch(error => setMessage(String(error))); } }}><Pencil size={14} />{loadingTargetId === t.id ? 'Loading' : 'Edit'}</button><button disabled={Boolean(loadingTargetId)} title="Copy redacted target JSON without secrets" onClick={() => copyTargetConfig(t).catch(error => setMessage(String(error)))}><Copy size={14} />Config</button><button disabled={Boolean(validating) || !targetEnabled} onClick={() => validateOne(t.id).catch(error => setMessage(String(error)))}>{validating === t.id ? 'Checking' : 'Validate'}</button><button disabled={Boolean(validating) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : targetEnabled ? 'Disable target without deleting history' : 'Enable target'} onClick={() => toggleTargetEnabled(t).catch(error => setMessage(String(error)))}>{targetEnabled ? <Square size={14} /> : <Play size={14} />}{targetEnabled ? 'Disable' : 'Enable'}</button><button disabled={Boolean(validating) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : 'Delete target permanently'} onClick={() => removeTarget(t).catch(error => setMessage(String(error)))}><Trash2 size={14} />Delete</button></div></td></tr>;
     })}</tbody></table>
     <h2>Adapters</h2><table><thead><tr><th>Name</th><th>Kind</th><th>Command / Endpoint</th><th>Validation</th></tr></thead><tbody>{adapters.map(adapter => <tr key={adapter.id}><td>{adapter.name}</td><td>{adapter.kind}</td><td>{adapter.command ?? adapter.defaultBaseUrl ?? '-'}</td><td><span className={`pill ${adapter.validationStatus}`}>{adapter.validationStatus}</span> {adapter.validationDetail}</td></tr>)}</tbody></table>
   </section>;
