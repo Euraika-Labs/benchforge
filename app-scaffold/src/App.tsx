@@ -544,15 +544,23 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const packCheck = dashboardCheck(checks, 'benchmark-packs', 'Benchmark packs', packs.length ? 'ok' : 'error', packs.length ? `${packs.length} packs available` : 'No packs found');
   const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
   const sandboxCheck = dashboardSandboxCheck(checks);
-  const recommendedTargetIds = dashboardLocalCloudTargetIds(targets);
+  const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
+  const recommendedTargetIds = recommendedTargets.runTargetIds;
+  const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
   const comparisonReady = compareCheck.status === 'ok';
+  const comparisonNeedsPricing = comparisonReady && Boolean(pricingRepairTargetIds.length) && recommendedTargetIds.length < 2;
   const recommendedComparisonPack = useMemo(() => recommendedComparisonPackId(packs), [packs]);
   const hasReliabilityPack = packs.some(pack => pack.id === 'llm-reliability');
-  const primaryBenchmarkActionLabel = comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
+  const primaryBenchmarkActionLabel = comparisonNeedsPricing ? 'Add cloud pricing' : comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
   function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
     if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && recommendedTargetIds.length >= 2) {
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId));
       setMessage(`Run Builder ready for local/cloud comparison: ${recommendedTargetIds.length} target(s), ${benchmarkPackLabel(benchmarkPackId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
+      return;
+    }
+    if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && pricingRepairTargetIds.length) {
+      openTargetRepair({ targetIds: pricingRepairTargetIds, code: 'pricing_assumption' });
+      setMessage(`Add input/output pricing before running a capped local/cloud comparison: ${previewList(pricingRepairTargetIds)}`);
       return;
     }
     const repairSide = readinessRepairSide(nextBenchmarkStep);
@@ -590,8 +598,8 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       <div className="actions">
         <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
         <button onClick={() => setPage('targets')}><Boxes size={14} />Cloud target</button>
-        <button onClick={() => openComparisonRun()}>{comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{primaryBenchmarkActionLabel}</button>
-        <button disabled={!comparisonReady || !hasReliabilityPack} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
+        <button onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{primaryBenchmarkActionLabel}</button>
+        <button disabled={!comparisonReady || comparisonNeedsPricing || !hasReliabilityPack} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
         <button disabled={comparisonResultCheck.status !== 'ok'} onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
       </div>
     </div>
@@ -994,13 +1002,23 @@ function dashboardCheck(checks: DoctorCheck[], id: string, label: string, status
   };
 }
 
-function dashboardLocalCloudTargetIds(targets: Target[]) {
-  const selectable = targets.filter(targetIsSelectableForRun);
+interface DashboardLocalCloudComparisonTargets {
+  runTargetIds: string[];
+  pricingRepairTargetIds: string[];
+}
+
+function dashboardLocalCloudComparisonTargets(targets: Target[]): DashboardLocalCloudComparisonTargets {
+  const selectable = targets.filter(targetIsSelectableModel);
   const localIds = selectable.filter(dashboardTargetLooksLocal).map(target => target.id);
   const cloudTargets = selectable.filter(dashboardTargetLooksCloud);
   const pricedCloudIds = cloudTargets.filter(targetHasInputOutputPricing).map(target => target.id);
-  const cloudIds = pricedCloudIds.length ? pricedCloudIds : cloudTargets.map(target => target.id);
-  return uniqueIdsInOrder([...localIds, ...cloudIds]);
+  const pricingRepairTargetIds = localIds.length && !pricedCloudIds.length
+    ? cloudTargets.map(target => target.id)
+    : [];
+  return {
+    runTargetIds: localIds.length && pricedCloudIds.length ? uniqueIdsInOrder([...localIds, ...pricedCloudIds]) : [],
+    pricingRepairTargetIds: uniqueIdsInOrder(pricingRepairTargetIds),
+  };
 }
 
 function uniqueIdsInOrder(values: string[]) {
@@ -4239,12 +4257,19 @@ function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMe
   const warnings = checks.filter(c => c.status === 'warn').length;
   const ok = checks.filter(c => c.status === 'ok').length;
   const installableLocalMissing = checks.some(check => isLocalModelToolCheck(check) && check.status !== 'ok');
-  const recommendedTargetIds = dashboardLocalCloudTargetIds(targets);
+  const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
+  const recommendedTargetIds = recommendedTargets.runTargetIds;
+  const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
   const recommendedPack = recommendedComparisonPackId(packs);
   function openBenchmarkStep(check: DoctorCheck) {
     if (check.command.startsWith('Runs > Local + cloud') && recommendedTargetIds.length >= 2) {
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, recommendedPack));
       setMessage(`Run Builder ready for local/cloud comparison: ${recommendedTargetIds.length} target(s), ${benchmarkPackLabel(recommendedPack)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
+      return;
+    }
+    if (check.command.startsWith('Runs > Local + cloud') && pricingRepairTargetIds.length) {
+      openTargetRepair({ targetIds: pricingRepairTargetIds, code: 'pricing_assumption' });
+      setMessage(`Add input/output pricing before running a capped local/cloud comparison: ${previewList(pricingRepairTargetIds)}`);
       return;
     }
     const repairSide = readinessRepairSide(check);
@@ -6879,7 +6904,7 @@ function errorCategoryRepairHint(code: string) {
     case 'malformed_response':
       return 'Open Targets to check the adapter, endpoint, and model output format; inspect artifacts if the target still validates.';
     case 'pricing_assumption':
-      return 'Open Targets to add prompt cache read/write pricing for the affected target, then validate and rerun comparison evidence.';
+      return 'Open Targets to add missing input/output or prompt-cache pricing for the affected target, then validate and rerun comparison evidence.';
     default:
       return 'Open Targets to repair the affected target, then validate before rerunning.';
   }
