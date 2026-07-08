@@ -174,19 +174,31 @@ const firstRunSeenKey = 'benchforge-first-run-seen';
 const emptyWorkspaceDoctorOpenedKey = 'benchforge-empty-workspace-doctor-opened';
 const automaticConnectivityMaxCostUsd = 0.05;
 const defaultComparisonMaxCostUsd = 1.0;
+const connectivityBenchmarkPackId = 'llm-connectivity';
+const defaultModelComparisonPackId = 'llm-basics';
 const fallbackModelBenchmarkPacks = [
   { id: 'llm-basics', label: 'LLM Basics' },
-  { id: 'llm-connectivity', label: 'LLM Connectivity' },
   { id: 'llm-core', label: 'LLM Core' },
   { id: 'llm-structured-output', label: 'LLM Structured Output' },
   { id: 'llm-grounded-context', label: 'LLM Grounded Context' },
   { id: 'llm-practical', label: 'LLM Practical Selection' },
   { id: 'llm-decision-suite', label: 'LLM Decision Suite' },
   { id: 'llm-reliability', label: 'LLM Reliability' },
+  { id: 'llm-connectivity', label: 'LLM Connectivity' },
 ];
 
 const modelBenchmarkPackOrder = [
+  'llm-basics',
+  'llm-core',
+  'llm-structured-output',
+  'llm-grounded-context',
+  'llm-practical',
+  'llm-decision-suite',
+  'llm-reliability',
   'llm-connectivity',
+];
+
+const modelSelectionPackPreference = [
   'llm-basics',
   'llm-core',
   'llm-structured-output',
@@ -533,8 +545,9 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const sandboxCheck = dashboardSandboxCheck(checks);
   const recommendedTargetIds = dashboardLocalCloudTargetIds(targets);
   const comparisonReady = compareCheck.status === 'ok';
+  const recommendedComparisonPack = useMemo(() => recommendedComparisonPackId(packs), [packs]);
   const hasReliabilityPack = packs.some(pack => pack.id === 'llm-reliability');
-  function openComparisonRun(benchmarkPackId = 'llm-connectivity') {
+  function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
     if (comparisonReady && recommendedTargetIds.length >= 2) {
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId));
       return;
@@ -565,7 +578,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       <div className="actions">
         <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
         <button onClick={() => setPage('targets')}><Boxes size={14} />Cloud target</button>
-        <button onClick={() => openComparisonRun()}><Play size={14} />{comparisonReady ? 'Run connectivity comparison' : 'Open readiness checks'}</button>
+        <button onClick={() => openComparisonRun()}><Play size={14} />{comparisonReady ? 'Run model comparison' : 'Open readiness checks'}</button>
         <button disabled={!comparisonReady || !hasReliabilityPack} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
         <button disabled={comparisonResultCheck.status !== 'ok'} onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
       </div>
@@ -1145,8 +1158,8 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [cacheReadPrice, setCacheReadPrice] = useState('');
   const [cacheWritePrice, setCacheWritePrice] = useState('');
   const [autoBenchmarkAfterAdd, setAutoBenchmarkAfterAdd] = useState(true);
-  const [autoBenchmarkPackId, setAutoBenchmarkPackId] = useState('llm-connectivity');
-  const [comparisonPackId, setComparisonPackId] = useState('llm-reliability');
+  const [autoBenchmarkPackId, setAutoBenchmarkPackId] = useState(connectivityBenchmarkPackId);
+  const [comparisonPackId, setComparisonPackId] = useState(defaultModelComparisonPackId);
   const [cloudModelQuery, setCloudModelQuery] = useState('');
   const [cloudModels, setCloudModels] = useState<CloudModel[]>([]);
   const [cloudModelBusy, setCloudModelBusy] = useState(false);
@@ -1200,6 +1213,13 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const allComparisonTargetIds = localComparisonTargetIds.length && cloudComparisonTargetIds.length
     ? [...localComparisonTargetIds, ...cloudComparisonTargetIds]
     : [];
+
+  useEffect(() => {
+    if (!modelBenchmarkPacks.length || modelBenchmarkPacks.some(pack => pack.id === comparisonPackId)) {
+      return;
+    }
+    setComparisonPackId(recommendedComparisonPackId(packs));
+  }, [comparisonPackId, modelBenchmarkPacks, packs]);
 
   useEffect(() => {
     if (!repairIntent) {
@@ -1726,7 +1746,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         output_price_usd_per_million_tokens: 0,
       },
     };
-    const packId = autoBenchmarkPackId || 'llm-connectivity';
+    const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
     const automaticSettings = automaticModelBenchmarkSettings(packId);
     const handoff = await createTargetWithBenchmarkHandoff(
       targetRequest,
@@ -1887,7 +1907,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const id = editingTargetId || slugify(`${selectedAdapter.id}-${model.trim()}`);
     const targetRequest = { id, name, kind: 'direct_model', adapterId: selectedAdapter.id, config };
     if (!wasEditing) {
-      const packId = autoBenchmarkPackId || 'llm-connectivity';
+      const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
       const automaticSettings = automaticModelBenchmarkSettings(packId);
       const handoff = await createTargetWithBenchmarkHandoff(
         targetRequest,
@@ -1958,7 +1978,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       setMessage(`Updated target ${name}; ${validationNote}`);
       return;
     }
-    const packId = autoBenchmarkPackId || 'llm-connectivity';
+    const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
     const packLabel = benchmarkPackLabel(packId, modelBenchmarkPacks);
     const intent = automaticModelRunBuilderIntent(target, packId);
     if (!autoBenchmarkAfterAdd) {
@@ -3217,6 +3237,9 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
     if (nextPackId) {
       setSelectedPackId(nextPackId);
     }
+    const packNote = nextPackId
+      ? ` using ${packs.find(pack => pack.id === nextPackId)?.name ?? benchmarkPackLabel(nextPackId)}`
+      : '';
     const includesCloudTarget = targetIds.some(id => cloudTargetIds.includes(id));
     if (includesCloudTarget) {
       setMaxCostUsd(String(defaultComparisonMaxCostUsd));
@@ -3226,11 +3249,11 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
       setWarmupRuns('1');
       setConcurrency(String(Math.min(2, Math.max(1, targetIds.length))));
       const costCapNote = includesCloudTarget ? ` and ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap` : '';
-      setMessage(`Selected ${targetIds.length} ${label} target(s) with 3 repetitions, 1 warmup${costCapNote}`);
+      setMessage(`Selected ${targetIds.length} ${label} target(s)${packNote} with 3 repetitions, 1 warmup${costCapNote}`);
       return;
     }
     const costCapNote = includesCloudTarget ? ` with ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap` : '';
-    setMessage(`Selected ${targetIds.length} ${label} target(s)${costCapNote}`);
+    setMessage(`Selected ${targetIds.length} ${label} target(s)${packNote}${costCapNote}`);
   }
   function applyRecommendedCostCap(value: number) {
     setMaxCostUsd(String(value));
@@ -7040,7 +7063,7 @@ function targetCompatibleWithPack(target: Target, pack?: BenchmarkPack) {
 
 function recommendedRunPackIdForTarget(target: Target) {
   if (target.kind === 'direct_model' || target.kind === 'harnessed_model') {
-    return 'llm-connectivity';
+    return connectivityBenchmarkPackId;
   }
   if (target.kind === 'benchmark_harness') {
     return 'security-defensive';
@@ -7069,14 +7092,14 @@ function benchmarkPackLabel(packId: string, options: BenchmarkPackOption[] = fal
 }
 
 function automaticModelBenchmarkSettings(packId: string) {
-  if (packId === 'llm-connectivity') {
+  if (packId === connectivityBenchmarkPackId) {
     return { repetitions: 1, warmupRuns: 0, concurrency: 1 };
   }
   return { repetitions: 3, warmupRuns: 1, concurrency: 1 };
 }
 
 function automaticModelBenchmarkMaxCostUsd(packId: string) {
-  return packId === 'llm-connectivity' ? automaticConnectivityMaxCostUsd : defaultComparisonMaxCostUsd;
+  return packId === connectivityBenchmarkPackId ? automaticConnectivityMaxCostUsd : defaultComparisonMaxCostUsd;
 }
 
 function automaticModelRunBuilderIntent(target: Target, benchmarkPackId: string): RunBuilderIntent {
@@ -7126,7 +7149,7 @@ function modelComparisonIntentForTarget(target: Target, targets: Target[], bench
   return localCloudRunBuilderIntent(orderedIds, benchmarkPackId);
 }
 
-function localCloudRunBuilderIntent(targetIds: string[], benchmarkPackId = 'llm-connectivity'): RunBuilderIntent {
+function localCloudRunBuilderIntent(targetIds: string[], benchmarkPackId = defaultModelComparisonPackId): RunBuilderIntent {
   return {
     targetIds,
     benchmarkPackId,
@@ -7179,15 +7202,46 @@ function formValueFromEnvPassthrough(value: unknown) {
 }
 
 function preferredRunPackForTargets(targetIds: string[], targets: Target[], packs: BenchmarkPack[]) {
-  const firstTarget = targets.find(target => targetIds.includes(target.id));
+  const selectedTargets = targets.filter(target => targetIds.includes(target.id));
+  const selectedModelTargets = selectedTargets.filter(targetIsSelectableModel);
+  const hasLocalModel = selectedModelTargets.some(isLocalModelTarget);
+  const hasCloudModel = selectedModelTargets.some(isCloudModelTarget);
+  if (hasLocalModel && hasCloudModel) {
+    return recommendedComparisonPackId(packs);
+  }
+  const firstTarget = selectedTargets[0];
   const preferred = firstTarget ? recommendedRunPackIdForTarget(firstTarget) : 'quick-smoke';
   if (packs.some(pack => pack.id === preferred)) {
     return preferred;
   }
-  if (packs.some(pack => pack.id === 'llm-basics')) {
-    return 'llm-basics';
+  if (packs.some(pack => pack.id === defaultModelComparisonPackId)) {
+    return defaultModelComparisonPackId;
   }
   return packs[0]?.id ?? '';
+}
+
+function recommendedComparisonPackId(packs: BenchmarkPack[]) {
+  const modelPromptPacks = packs.filter(pack => pack.id.startsWith('llm-')
+    && pack.id !== connectivityBenchmarkPackId
+    && pack.taskTypes.includes('prompt')
+    && pack.supportedTargetKinds.includes('direct_model'));
+  const availableIds = new Set(modelPromptPacks.map(pack => pack.id));
+  for (const packId of modelSelectionPackPreference) {
+    if (availableIds.has(packId)) {
+      return packId;
+    }
+  }
+  const promptComparisonPack = modelPromptPacks.find(pack => pack.evidenceProfile === 'prompt_comparison');
+  if (promptComparisonPack) {
+    return promptComparisonPack.id;
+  }
+  if (modelPromptPacks[0]) {
+    return modelPromptPacks[0].id;
+  }
+  if (packs.some(pack => pack.id === connectivityBenchmarkPackId)) {
+    return connectivityBenchmarkPackId;
+  }
+  return defaultModelComparisonPackId;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
