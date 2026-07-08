@@ -2870,6 +2870,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const [runEstimate, setRunEstimate] = useState<RunEstimate | null>(null);
   const [estimateError, setEstimateError] = useState('');
   const [runValidationBlockers, setRunValidationBlockers] = useState<TargetValidation[]>([]);
+  const autoSeedRunBuilderDefaultsRef = useRef(false);
   const activeJob = jobs.find(job => job.id === activeJobId);
   const activeRunInProgress = Boolean(activeJob && isJobActive(activeJob));
   const selectedPack = packs.find(pack => pack.id === selectedPackId);
@@ -3031,6 +3032,25 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
     }
     onRunBuilderIntentConsumed();
   }, [runBuilderIntent, targets, packs, onRunBuilderIntentConsumed, setMessage]);
+
+  useEffect(() => {
+    if (autoSeedRunBuilderDefaultsRef.current || runBuilderIntent || !packs.length || !localCloudTargetIds.length) {
+      return;
+    }
+    if (selected.length !== 1 || selected[0] !== 'mock-agent' || selectedPackId !== 'quick-smoke' || repetitions !== '1' || warmupRuns !== '0' || concurrency !== '1' || maxCostUsd) {
+      return;
+    }
+    const packId = recommendedComparisonPackId(packs);
+    if (!packs.some(pack => pack.id === packId)) {
+      return;
+    }
+    const intent = localCloudRunBuilderIntent(localCloudTargetIds, packId);
+    autoSeedRunBuilderDefaultsRef.current = true;
+    setSelected(intent.targetIds);
+    setSelectedPackId(intent.benchmarkPackId ?? packId);
+    applyRunBuilderIntentSettings(intent, setRepetitions, setWarmupRuns, setConcurrency, setMaxCostUsd);
+    setMessage(`Run Builder preselected ${intent.targetIds.length} local/cloud model target(s), ${benchmarkPackLabel(packId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
+  }, [runBuilderIntent, packs, localCloudTargetIds, selected, selectedPackId, repetitions, warmupRuns, concurrency, maxCostUsd, setMessage]);
 
   useEffect(() => {
     if (!pendingTaskIntent || pendingTaskIntent.packId !== selectedPackId || tasksLoading || taskError || !packTasks.length) {
