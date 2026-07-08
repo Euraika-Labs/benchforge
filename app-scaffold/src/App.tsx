@@ -3171,6 +3171,9 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const selectedCloudTargets = selectedTargets.filter(target => isCloudModelTarget(target));
   const comparisonDefaultsRecommended = Boolean(selectedPack && selectedLocalTargets.length && selectedCloudTargets.length && packUsesModelSelectionDefaults(selectedPack));
   const recommendedComparisonConcurrency = Math.min(2, Math.max(1, selectedTargets.length));
+  const selectedPackSupportsModelComparison = Boolean(selectedPack?.taskTypes.includes('prompt') && selectedPack.supportedTargetKinds.includes('direct_model'));
+  const canApplyLocalCloudPanelShortcut = Boolean(localCloudTargetIds.length && (selectedLocalTargets.length || selectedCloudTargets.length) && !(selectedLocalTargets.length && selectedCloudTargets.length));
+  const localCloudPanelShortcutPackId = selectedPackSupportsModelComparison ? selectedPackId : undefined;
   const parsedRepetitions = parsePositiveIntegerInRange(repetitions, 'Repetitions', 1, 100);
   const parsedWarmupRuns = parsePositiveIntegerInRange(warmupRuns, 'Warmup runs', 0, 20);
   const parsedConcurrency = parsePositiveIntegerInRange(concurrency, 'Concurrency', 1, 8);
@@ -3700,7 +3703,12 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
       </details>
       {selectedPack?.heavy ? <p className="muted">Selected pack is marked heavy and may take longer or require external tooling.</p> : null}
       {selectedPack ? <PackRunReadiness pack={selectedPack} docker={docker} /> : null}
-      {comparisonRunReadiness ? <LocalCloudRunReadinessPanel readiness={comparisonRunReadiness} onSetCostCap={applyRecommendedCostCap} onRepairPricing={repairRunPricingBlockers} /> : null}
+      {comparisonRunReadiness ? <LocalCloudRunReadinessPanel
+        readiness={comparisonRunReadiness}
+        onUseLocalCloud={canApplyLocalCloudPanelShortcut ? () => applyTargetShortcut('local/cloud comparison', localCloudTargetIds, localCloudPanelShortcutPackId) : undefined}
+        onSetCostCap={applyRecommendedCostCap}
+        onRepairPricing={repairRunPricingBlockers}
+      /> : null}
       {runValidationBlockers.length ? <RunValidationBlockerPanel blockers={runValidationBlockers} targets={targets} onRepair={repairRunValidationBlocker} /> : null}
       {repetitionConfidenceWarning ? <div className="preflight-box warn"><strong>Repetition Confidence</strong><p>{repetitionConfidenceWarning}</p>{comparisonDefaultsRecommended ? <div className="row-actions"><button onClick={applyRecommendedComparisonDefaults}><ShieldCheck size={14} />Use 3 reps + warmup</button></div> : null}</div> : null}
       {runScaleWarning ? <div className="preflight-box warn"><strong>Large Run</strong><p>{runScaleWarning}</p></div> : null}
@@ -3767,13 +3775,15 @@ function PackRunReadiness({ pack, docker }: { pack: BenchmarkPack; docker: boole
   </div>;
 }
 
-function LocalCloudRunReadinessPanel({ readiness, onSetCostCap, onRepairPricing }: { readiness: LocalCloudRunReadiness; onSetCostCap?: (value: number) => void; onRepairPricing?: (targetIds: string[]) => void }) {
+function LocalCloudRunReadinessPanel({ readiness, onUseLocalCloud, onSetCostCap, onRepairPricing }: { readiness: LocalCloudRunReadiness; onUseLocalCloud?: () => void; onSetCostCap?: (value: number) => void; onRepairPricing?: (targetIds: string[]) => void }) {
+  const hasActions = Boolean(onUseLocalCloud || (readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing));
   return <div className={`preflight-box ${readiness.tone}`}>
     <strong>Comparison Readiness</strong>
     <p>{readiness.headline}</p>
     <div className="mini-grid">{readiness.facts.map(fact => <span key={fact}>{fact}</span>)}</div>
     {readiness.notes.map(note => <p key={note}>{note}</p>)}
-    {(readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing) ? <div className="row-actions">
+    {hasActions ? <div className="row-actions">
+      {onUseLocalCloud ? <button onClick={onUseLocalCloud}><ClipboardCheck size={14} />Use local + cloud</button> : null}
       {readiness.recommendedCostCapUsd != null && onSetCostCap ? <button onClick={() => onSetCostCap(readiness.recommendedCostCapUsd!)}><ShieldCheck size={14} />Set {formatCost(readiness.recommendedCostCapUsd)} cap</button> : null}
       {readiness.pricingRepairTargetIds.length && onRepairPricing ? <button title={errorCategoryRepairHint('pricing_assumption')} onClick={() => onRepairPricing(readiness.pricingRepairTargetIds)}><Pencil size={14} />Add pricing</button> : null}
     </div> : null}
