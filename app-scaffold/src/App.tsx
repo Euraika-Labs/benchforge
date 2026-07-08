@@ -16,6 +16,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Square,
   TerminalSquare,
   Trash2,
@@ -1287,6 +1288,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [cloudModels, setCloudModels] = useState<CloudModel[]>([]);
   const [cloudModelBusy, setCloudModelBusy] = useState(false);
   const [selectedCloudModel, setSelectedCloudModel] = useState<CloudModel | null>(null);
+  const [targetAdvancedOpen, setTargetAdvancedOpen] = useState(false);
   const [providerKeyAvailable, setProviderKeyAvailable] = useState(false);
   const [providerKeyDetail, setProviderKeyDetail] = useState('');
   const [providerKeyStatusBusy, setProviderKeyStatusBusy] = useState(false);
@@ -1484,6 +1486,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setCloudModelQuery('');
     setCloudModels([]);
     setSelectedCloudModel(null);
+    setTargetAdvancedOpen(false);
   }
 
   function handleModelChange(nextModel: string) {
@@ -1660,6 +1663,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setCloudModelQuery('');
     setCloudModels([]);
     setSelectedCloudModel(null);
+    setTargetAdvancedOpen(false);
   }
 
   function clearHarnessForm() {
@@ -1713,6 +1717,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       setCloudModelQuery('');
       setCloudModels([]);
       setSelectedCloudModel(null);
+      setTargetAdvancedOpen(true);
       setMessage(`Loaded ${exported.name} for editing`);
     } catch (error) {
       setMessage(String(error));
@@ -2400,18 +2405,23 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         <label>Name <input value={targetName} onChange={event => setTargetName(event.target.value)} placeholder="optional display name" /></label>
         <label>Base URL <input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={selectedAdapter?.defaultBaseUrl ?? 'optional'} /></label>
         <label>API key <input type="password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={editingTargetId ? 'leave blank to keep saved key' : needsApiKey ? 'saved to Keychain' : 'optional for local endpoints'} /></label>
-        <label>API key env <input value={apiKeyEnv} onChange={event => setApiKeyEnv(event.target.value)} placeholder={editingTargetPreserveApiKeyEnvRef ? 'leave blank to keep env ref' : 'optional, e.g. OPENAI_API_KEY'} /></label>
         <div className="key-status"><span className={`pill ${providerKeyState.className}`}>{providerKeyState.label}</span><span>{providerKeyState.detail}</span>{needsApiKey ? <button type="button" disabled={providerKeyStatusBusy} onClick={() => refreshSelectedProviderKeyStatus().catch(error => setMessage(String(error)))}><RefreshCw size={14} /></button> : null}</div>
-        <label>Temperature <input type="number" min="0" max="2" step="0.1" value={temperature} onChange={event => setTemperature(event.target.value)} placeholder="0" /></label>
-        <label>Top P <input type="number" min="0" max="1" step="0.05" value={topP} onChange={event => setTopP(event.target.value)} placeholder="1" /></label>
-        <label>Max tokens <input type="number" min="1" step="1" value={maxTokens} onChange={event => setMaxTokens(event.target.value)} placeholder="512" /></label>
-        <label>Seed <input type="number" step="1" value={seed} onChange={event => setSeed(event.target.value)} placeholder="optional" /></label>
-        <label>Timeout sec <input type="number" min="1" step="1" value={timeoutSeconds} onChange={event => setTimeoutSeconds(event.target.value)} placeholder="120" /></label>
-        <label>Retries <input type="number" min="0" max="5" step="1" value={retryCount} onChange={event => setRetryCount(event.target.value)} placeholder="1" /></label>
-        <label>Input $/1M tok <input type="number" min="0" step="0.000001" value={inputPrice} onChange={event => setInputPrice(event.target.value)} placeholder="optional" /></label>
-        <label>Output $/1M tok <input type="number" min="0" step="0.000001" value={outputPrice} onChange={event => setOutputPrice(event.target.value)} placeholder="optional" /></label>
-        <label>Cache read $/1M tok <input type="number" min="0" step="0.000001" value={cacheReadPrice} onChange={event => setCacheReadPrice(event.target.value)} placeholder="optional" /></label>
-        <label>Cache write $/1M tok <input type="number" min="0" step="0.000001" value={cacheWritePrice} onChange={event => setCacheWritePrice(event.target.value)} placeholder="optional" /></label>
+        <details className="advanced-section" open={targetAdvancedOpen} onToggle={event => setTargetAdvancedOpen(event.currentTarget.open)}>
+          <summary><SlidersHorizontal size={14} />Advanced</summary>
+          <div className="form-grid">
+            <label>API key env <input value={apiKeyEnv} onChange={event => setApiKeyEnv(event.target.value)} placeholder={editingTargetPreserveApiKeyEnvRef ? 'leave blank to keep env ref' : 'optional, e.g. OPENAI_API_KEY'} /></label>
+            <label>Temperature <input type="number" min="0" max="2" step="0.1" value={temperature} onChange={event => setTemperature(event.target.value)} placeholder="0" /></label>
+            <label>Top P <input type="number" min="0" max="1" step="0.05" value={topP} onChange={event => setTopP(event.target.value)} placeholder="1" /></label>
+            <label>Max tokens <input type="number" min="1" step="1" value={maxTokens} onChange={event => setMaxTokens(event.target.value)} placeholder="512" /></label>
+            <label>Seed <input type="number" step="1" value={seed} onChange={event => setSeed(event.target.value)} placeholder="optional" /></label>
+            <label>Timeout sec <input type="number" min="1" step="1" value={timeoutSeconds} onChange={event => setTimeoutSeconds(event.target.value)} placeholder="120" /></label>
+            <label>Retries <input type="number" min="0" max="5" step="1" value={retryCount} onChange={event => setRetryCount(event.target.value)} placeholder="1" /></label>
+            <label>Input $/1M tok <input type="number" min="0" step="0.000001" value={inputPrice} onChange={event => setInputPrice(event.target.value)} placeholder="optional" /></label>
+            <label>Output $/1M tok <input type="number" min="0" step="0.000001" value={outputPrice} onChange={event => setOutputPrice(event.target.value)} placeholder="optional" /></label>
+            <label>Cache read $/1M tok <input type="number" min="0" step="0.000001" value={cacheReadPrice} onChange={event => setCacheReadPrice(event.target.value)} placeholder="optional" /></label>
+            <label>Cache write $/1M tok <input type="number" min="0" step="0.000001" value={cacheWritePrice} onChange={event => setCacheWritePrice(event.target.value)} placeholder="optional" /></label>
+          </div>
+        </details>
         {!editingTargetId ? <label className="toggle"><input type="checkbox" checked={autoBenchmarkAfterAdd} onChange={event => setAutoBenchmarkAfterAdd(event.target.checked)} />Run benchmark after add</label> : null}
         {!editingTargetId ? <label>Benchmark pack <select value={autoBenchmarkPackId} disabled={!autoBenchmarkAfterAdd} onChange={event => setAutoBenchmarkPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label> : null}
         <div className="form-actions"><button onClick={() => addModelTarget().catch(error => setMessage(String(error)))}>{editingTargetId ? <Pencil size={16} /> : <Plus size={16} />}{editingTargetId ? 'Update target' : 'Add target'}</button>{editingTargetId ? <button onClick={() => clearTargetForm()}><RotateCcw size={16} />Cancel</button> : null}</div>
