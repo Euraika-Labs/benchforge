@@ -206,7 +206,7 @@ In the desktop app, open Settings, save `HF_TOKEN` if the model is gated, then u
 
 1. Add and validate a local OpenAI-compatible target, such as Ollama, LM Studio, or `llama.cpp`.
 2. Add and validate a cloud target, such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Gemini.
-3. In Run Builder, choose an `llm-*` pack, set at least 3 repetitions, and set a max-cost cap for paid providers.
+3. In Run Builder or Targets, use the local/cloud shortcut. Shortcuts prefer cloud targets with input/output pricing so capped runs can estimate spend.
 4. Compare pass rate, score, p95 latency, throughput, cost, served model identity, and evidence warnings in Results.
 
 ## Configure Secrets

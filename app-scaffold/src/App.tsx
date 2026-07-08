@@ -985,7 +985,8 @@ function dashboardCheck(checks: DoctorCheck[], id: string, label: string, status
 function dashboardLocalCloudTargetIds(targets: Target[]) {
   const selectable = targets.filter(targetIsSelectableForRun);
   const local = selectable.find(dashboardTargetLooksLocal);
-  const cloud = selectable.find(dashboardTargetLooksCloud);
+  const cloudTargets = selectable.filter(dashboardTargetLooksCloud);
+  const cloud = cloudTargets.find(targetHasInputOutputPricing) ?? cloudTargets[0];
   return [local?.id, cloud?.id].filter((id): id is string => Boolean(id));
 }
 
@@ -1209,9 +1210,14 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const modelBenchmarkPacks = useMemo(() => modelBenchmarkPackOptions(packs), [packs]);
   const enabledModelTargets = targets.filter(targetIsSelectableModel);
   const localComparisonTargetIds = enabledModelTargets.filter(isLocalModelTarget).map(target => target.id);
-  const cloudComparisonTargetIds = enabledModelTargets.filter(isCloudModelTarget).map(target => target.id);
-  const allComparisonTargetIds = localComparisonTargetIds.length && cloudComparisonTargetIds.length
-    ? [...localComparisonTargetIds, ...cloudComparisonTargetIds]
+  const cloudComparisonTargets = enabledModelTargets.filter(isCloudModelTarget);
+  const pricedCloudComparisonTargets = cloudComparisonTargets.filter(targetHasInputOutputPricing);
+  const preferredCloudComparisonTargetIds = (pricedCloudComparisonTargets.length ? pricedCloudComparisonTargets : cloudComparisonTargets).map(target => target.id);
+  const skippedUnpricedCloudTargetIds = pricedCloudComparisonTargets.length
+    ? cloudComparisonTargets.filter(target => !targetHasInputOutputPricing(target)).map(target => target.id)
+    : [];
+  const allComparisonTargetIds = localComparisonTargetIds.length && preferredCloudComparisonTargetIds.length
+    ? [...localComparisonTargetIds, ...preferredCloudComparisonTargetIds]
     : [];
 
   useEffect(() => {
@@ -2132,7 +2138,16 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       return;
     }
     openRunBuilder(intent);
-    setMessage(`Run Builder ready to compare ${intent.targetIds.length} local/cloud target(s) with ${benchmarkPackLabel(intent.benchmarkPackId ?? comparisonPackId, modelBenchmarkPacks)}`);
+    const intentTargets = intent.targetIds
+      .map(id => targets.find(candidate => candidate.id === id))
+      .filter((candidate): candidate is Target => Boolean(candidate));
+    const unpricedCloudTargetIds = intentTargets
+      .filter(candidate => isCloudModelTarget(candidate) && !targetHasInputOutputPricing(candidate))
+      .map(candidate => candidate.id);
+    const pricingNote = unpricedCloudTargetIds.length
+      ? ` Add pricing for cloud target(s) before running with a max-cost cap: ${previewList(unpricedCloudTargetIds)}.`
+      : ' Priced cloud target selected for capped cost estimates.';
+    setMessage(`Run Builder ready to compare ${intent.targetIds.length} local/cloud target(s) with ${benchmarkPackLabel(intent.benchmarkPackId ?? comparisonPackId, modelBenchmarkPacks)}.${pricingNote}`);
   }
 
   function openAllLocalCloudComparison() {
@@ -2141,12 +2156,17 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       return;
     }
     openRunBuilder(localCloudRunBuilderIntent(allComparisonTargetIds, comparisonPackId));
-    setMessage(`Run Builder ready to compare ${localComparisonTargetIds.length} local and ${cloudComparisonTargetIds.length} cloud target(s) with ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)}`);
+    const pricingNote = skippedUnpricedCloudTargetIds.length
+      ? ` Skipped unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.`
+      : pricedCloudComparisonTargets.length
+        ? ' Selected priced cloud target(s) for cost-capped comparison.'
+        : ' Add cloud pricing before running with a max-cost cap.'
+    setMessage(`Run Builder ready to compare ${localComparisonTargetIds.length} local and ${preferredCloudComparisonTargetIds.length} cloud target(s) with ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)}.${pricingNote}`);
   }
 
   const providerKeyState = providerKeyStatus(needsApiKey, providerKeyStatusBusy, providerKeyAvailable, apiKey, apiKeyEnv, providerKeyDetail);
 
-  return <section><div className="section-head"><h1>Targets</h1><div className="actions"><button disabled={validating === 'all'} onClick={() => validateAll().catch(error => setMessage(String(error)))}><RefreshCw size={16} />Validate all</button><label className="compact-select">Compare pack <select value={comparisonPackId} onChange={event => setComparisonPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label><button disabled={!allComparisonTargetIds.length} title={allComparisonTargetIds.length ? `Compare all enabled local and cloud model targets with ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)}` : 'Add one enabled local and one enabled cloud model target'} onClick={openAllLocalCloudComparison}><ClipboardCheck size={16} />Compare local/cloud</button><button onClick={() => addMock().catch(error => setMessage(String(error)))}><Plus size={16} />Mock target</button><button onClick={() => addWorkerHarness().catch(error => setMessage(String(error)))}><Plus size={16} />Worker harness</button></div></div>
+  return <section><div className="section-head"><h1>Targets</h1><div className="actions"><button disabled={validating === 'all'} onClick={() => validateAll().catch(error => setMessage(String(error)))}><RefreshCw size={16} />Validate all</button><label className="compact-select">Compare pack <select value={comparisonPackId} onChange={event => setComparisonPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label><button disabled={!allComparisonTargetIds.length} title={allComparisonTargetIds.length ? `Compare enabled local targets with ${preferredCloudComparisonTargetIds.length} cloud target(s); priced cloud targets are preferred for capped cost estimates` : 'Add one enabled local model target and one enabled cloud model target'} onClick={openAllLocalCloudComparison}><ClipboardCheck size={16} />Compare local/cloud</button><button onClick={() => addMock().catch(error => setMessage(String(error)))}><Plus size={16} />Mock target</button><button onClick={() => addWorkerHarness().catch(error => setMessage(String(error)))}><Plus size={16} />Worker harness</button></div></div>
     <div className="panel compact">
       <div className="form-title"><h2>Model Target</h2>{editingTargetId ? <span className="mini-tag">Editing {editingTarget?.name ?? editingTargetId}</span> : null}</div>
       <div className="form-grid">
@@ -7144,14 +7164,22 @@ function modelComparisonIntentForTarget(target: Target, targets: Target[], bench
   if (!targetIsLocal && !targetIsCloud) {
     return null;
   }
-  const counterpart = targets.find(candidate => candidate.id !== target.id
-    && targetIsSelectableModel(candidate)
-    && (targetIsLocal ? isCloudModelTarget(candidate) : isLocalModelTarget(candidate)));
+  const counterparts = targets
+    .filter(candidate => candidate.id !== target.id
+      && targetIsSelectableModel(candidate)
+      && (targetIsLocal ? isCloudModelTarget(candidate) : isLocalModelTarget(candidate)))
+    .sort(compareModelCounterpartPriority);
+  const counterpart = counterparts[0];
   if (!counterpart) {
     return null;
   }
   const orderedIds = targetIsLocal ? [target.id, counterpart.id] : [counterpart.id, target.id];
   return localCloudRunBuilderIntent(orderedIds, benchmarkPackId);
+}
+
+function compareModelCounterpartPriority(left: Target, right: Target) {
+  return Number(targetHasInputOutputPricing(right)) - Number(targetHasInputOutputPricing(left))
+    || left.id.localeCompare(right.id);
 }
 
 function localCloudRunBuilderIntent(targetIds: string[], benchmarkPackId = defaultModelComparisonPackId): RunBuilderIntent {
