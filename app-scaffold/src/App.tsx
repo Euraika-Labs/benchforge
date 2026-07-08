@@ -183,7 +183,7 @@ const automaticConnectivityMaxCostUsd = 0.05;
 const defaultComparisonMaxCostUsd = 1.0;
 const connectivityBenchmarkPackId = 'llm-connectivity';
 const defaultModelComparisonPackId = 'llm-basics';
-const preferredCloudSetupAdapterIds = ['openrouter', 'openai', 'anthropic', 'mistral', 'gemini', 'azure-openai', 'openai-compatible'];
+const preferredCloudSetupAdapterIds = ['openai', 'anthropic', 'mistral', 'gemini', 'openrouter', 'azure-openai', 'openai-compatible'];
 const fallbackModelBenchmarkPacks = [
   { id: 'llm-basics', label: 'LLM Basics' },
   { id: 'llm-core', label: 'LLM Core' },
@@ -496,7 +496,7 @@ export default function App() {
           />
         );
       case 'doctor':
-        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
+        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} adapters={adapters} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
       case 'settings':
         return <SettingsPage busy={busy} targets={targets} adapters={adapters} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
       default:
@@ -1381,7 +1381,10 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     clearTargetForm();
     clearHarnessForm();
     selectAdapter(adapter.id);
-    const presetHint = adapterModelPresets(adapter).length ? ', choose a model preset or search the catalog' : ' and search the catalog';
+    const defaultPreset = applyFirstModelPreset(adapter);
+    const presetHint = defaultPreset
+      ? `; ${defaultPreset.label} is prefilled with pricing, so you can add the target or search for another model`
+      : '; search the catalog or enter a model manually';
     const actionHint = setupIntent.code === 'missing_key' ? 'Paste the API key' : 'Review the provider setup';
     setMessage(`${actionHint} for ${adapter.name}${presetHint}.`);
   }, [setupIntent, runnableAdapters, onSetupIntentConsumed, setMessage]);
@@ -1461,11 +1464,27 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     if (!preset) {
       return;
     }
+    applyModelPresetValues(preset);
+  }
+
+  function applyModelPresetValues(preset: ModelPreset) {
     setModel(preset.model);
     setInputPrice(preset.inputPrice != null ? String(preset.inputPrice) : '');
     setOutputPrice(preset.outputPrice != null ? String(preset.outputPrice) : '');
     setCacheReadPrice(preset.cacheReadPrice != null ? String(preset.cacheReadPrice) : '');
     setCacheWritePrice(preset.cacheWritePrice != null ? String(preset.cacheWritePrice) : '');
+  }
+
+  function applyFirstModelPreset(adapter: Adapter) {
+    const preset = adapterModelPresets(adapter)[0];
+    if (!preset) {
+      return null;
+    }
+    setModelPresetId(preset.id);
+    setSelectedCloudModel(null);
+    setCloudModelQuery(preset.model);
+    applyModelPresetValues(preset);
+    return preset;
   }
 
   function applyHarnessPreset(nextId: string) {
@@ -4338,7 +4357,7 @@ function Results({ results, targets, adapters, artifacts, selectedRunId, setSele
   </section>;
 }
 
-function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder, openTargetRepair, openTargetSetup }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
+function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder, openTargetRepair, openTargetSetup }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
   const [actionBusy, setActionBusy] = useState('');
   const [actionLog, setActionLog] = useState('');
   const errors = checks.filter(c => c.status === 'error').length;
@@ -4417,7 +4436,7 @@ function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMe
         <td><span className={`pill ${c.status}`}>{c.status}</span></td>
         <td>{c.detail}</td>
         <td className="doctor-remediation">{c.remediation || '-'}</td>
-        <td>{doctorAction(c, targets, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup)}</td>
+        <td>{doctorAction(c, targets, adapters, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup)}</td>
         <td className="doctor-command">{c.command ? <div className="doctor-command-cell"><code>{c.command}</code><button title="Copy command or path" onClick={() => copyDoctorCommand(c).catch(error => setMessage(String(error)))}><Copy size={14} /></button></div> : '-'}</td>
       </tr>)}</tbody>
     </table>
@@ -4562,7 +4581,7 @@ function cloudKeyDoctorAdapterId(check: DoctorCheck) {
   return check.id.startsWith('cloud-key-') ? check.id.slice('cloud-key-'.length) : '';
 }
 
-function doctorAction(check: DoctorCheck, targets: Target[], actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
+function doctorAction(check: DoctorCheck, targets: Target[], adapters: Adapter[], actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
@@ -4596,7 +4615,7 @@ function doctorAction(check: DoctorCheck, targets: Target[], actionBusy: string,
       if (repair) {
         openReadinessTargetRepair(targets, 'cloud', openTargetRepair, setMessage);
       } else {
-        setPage('targets');
+        openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
       }
     }}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Cloud'}</button>;
   }
