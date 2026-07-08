@@ -1576,8 +1576,18 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
 
   function handleModelChange(nextModel: string) {
     setModel(nextModel);
-    setModelPresetId('custom');
     setSelectedCloudModel(null);
+    const matchedPreset = matchingPricedModelPreset(selectedAdapter, nextModel);
+    if (matchedPreset) {
+      setModelPresetId(matchedPreset.id);
+      setCloudModelQuery(matchedPreset.model);
+      setInputPrice(matchedPreset.inputPrice != null ? String(matchedPreset.inputPrice) : '');
+      setOutputPrice(matchedPreset.outputPrice != null ? String(matchedPreset.outputPrice) : '');
+      setCacheReadPrice(matchedPreset.cacheReadPrice != null ? String(matchedPreset.cacheReadPrice) : '');
+      setCacheWritePrice(matchedPreset.cacheWritePrice != null ? String(matchedPreset.cacheWritePrice) : '');
+      return;
+    }
+    setModelPresetId('custom');
     setInputPrice('');
     setOutputPrice('');
     setCacheReadPrice('');
