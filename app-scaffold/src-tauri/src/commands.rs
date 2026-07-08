@@ -93,6 +93,8 @@ pub struct CreateTargetBenchmarkHandoffRequest {
     pub target: CreateTargetRequest,
     #[serde(default)]
     pub benchmark_pack_id: Option<String>,
+    #[serde(default)]
+    pub benchmark_target_ids: Vec<String>,
     #[serde(default = "default_repetitions")]
     pub repetitions: u32,
     #[serde(default)]
@@ -319,7 +321,10 @@ fn create_target_with_benchmark_handoff_for_conn(
             match jobs::start_quick_smoke_job(
                 conn,
                 runner::RunQuickSmokeRequest {
-                    target_ids: vec![target.id.clone()],
+                    target_ids: benchmark_handoff_target_ids(
+                        &target.id,
+                        &request.benchmark_target_ids,
+                    ),
                     benchmark_pack_id: pack_id.to_string(),
                     task_ids: vec![],
                     repetitions: request.repetitions.max(1),
@@ -342,6 +347,28 @@ fn create_target_with_benchmark_handoff_for_conn(
         run_job,
         benchmark_error,
     })
+}
+
+fn benchmark_handoff_target_ids(
+    created_target_id: &str,
+    requested_target_ids: &[String],
+) -> Vec<String> {
+    let mut target_ids = Vec::new();
+    for target_id in requested_target_ids {
+        let target_id = target_id.trim();
+        if !target_id.is_empty() && !target_ids.iter().any(|existing| existing == target_id) {
+            target_ids.push(target_id.to_string());
+        }
+    }
+    if target_ids.is_empty() {
+        target_ids.push(created_target_id.to_string());
+    } else if !target_ids
+        .iter()
+        .any(|target_id| target_id == created_target_id)
+    {
+        target_ids.push(created_target_id.to_string());
+    }
+    target_ids
 }
 
 fn persist_target_request(
@@ -11826,6 +11853,7 @@ pub fn run_cli_create_target_handoff_smoke() -> Result<serde_json::Value, String
             }),
         },
         benchmark_pack_id: Some("llm-connectivity".into()),
+        benchmark_target_ids: vec![],
         repetitions: 1,
         warmup_runs: 0,
         concurrency: 1,
@@ -12404,6 +12432,7 @@ fn run_local_runtime_handoff_smoke(server_base_url: &str) -> Result<serde_json::
                     ),
                 },
                 benchmark_pack_id: Some("llm-connectivity".into()),
+                benchmark_target_ids: vec![],
                 repetitions: 1,
                 warmup_runs: 0,
                 concurrency: 1,
@@ -16839,6 +16868,30 @@ fn strip_ansi_codes(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn benchmark_handoff_target_ids_preserve_order_and_include_created_target() {
+        assert_eq!(
+            benchmark_handoff_target_ids("new-cloud", &[]),
+            vec!["new-cloud".to_string()]
+        );
+        assert_eq!(
+            benchmark_handoff_target_ids(
+                "new-cloud",
+                &[
+                    " existing-local ".to_string(),
+                    "new-cloud".to_string(),
+                    "existing-local".to_string(),
+                    "".to_string(),
+                ],
+            ),
+            vec!["existing-local".to_string(), "new-cloud".to_string()]
+        );
+        assert_eq!(
+            benchmark_handoff_target_ids("new-local", &["priced-cloud".to_string()]),
+            vec!["priced-cloud".to_string(), "new-local".to_string()]
+        );
+    }
 
     fn export_result(
         id: &str,

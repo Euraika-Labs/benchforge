@@ -1159,7 +1159,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [cacheReadPrice, setCacheReadPrice] = useState('');
   const [cacheWritePrice, setCacheWritePrice] = useState('');
   const [autoBenchmarkAfterAdd, setAutoBenchmarkAfterAdd] = useState(true);
-  const [autoBenchmarkPackId, setAutoBenchmarkPackId] = useState(connectivityBenchmarkPackId);
+  const [autoBenchmarkPackId, setAutoBenchmarkPackId] = useState(defaultModelComparisonPackId);
   const [comparisonPackId, setComparisonPackId] = useState(defaultModelComparisonPackId);
   const [cloudModelQuery, setCloudModelQuery] = useState('');
   const [cloudModels, setCloudModels] = useState<CloudModel[]>([]);
@@ -1226,6 +1226,13 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
     setComparisonPackId(recommendedComparisonPackId(packs));
   }, [comparisonPackId, modelBenchmarkPacks, packs]);
+
+  useEffect(() => {
+    if (!modelBenchmarkPacks.length || modelBenchmarkPacks.some(pack => pack.id === autoBenchmarkPackId)) {
+      return;
+    }
+    setAutoBenchmarkPackId(recommendedComparisonPackId(packs));
+  }, [autoBenchmarkPackId, modelBenchmarkPacks, packs]);
 
   useEffect(() => {
     if (!repairIntent) {
@@ -1753,16 +1760,18 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       },
     };
     const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
-    const automaticSettings = automaticModelBenchmarkSettings(packId);
+    const plannedTarget = plannedModelTarget(id, name, runtime.adapterId, runtime.baseUrl);
+    const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targets, packId);
     const handoff = await createTargetWithBenchmarkHandoff(
       targetRequest,
       autoBenchmarkAfterAdd
         ? {
             benchmarkPackId: packId,
-            repetitions: automaticSettings.repetitions,
-            warmupRuns: automaticSettings.warmupRuns,
-            concurrency: automaticSettings.concurrency,
-            maxCostUsd: automaticModelBenchmarkMaxCostUsd(packId),
+            benchmarkTargetIds: benchmarkIntent.targetIds,
+            repetitions: benchmarkIntent.repetitions,
+            warmupRuns: benchmarkIntent.warmupRuns,
+            concurrency: benchmarkIntent.concurrency,
+            maxCostUsd: benchmarkIntent.maxCostUsd,
           }
         : {},
     );
@@ -1914,16 +1923,18 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const targetRequest = { id, name, kind: 'direct_model', adapterId: selectedAdapter.id, config };
     if (!wasEditing) {
       const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
-      const automaticSettings = automaticModelBenchmarkSettings(packId);
+      const plannedTarget = plannedModelTarget(id, name, selectedAdapter.id, baseUrl);
+      const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targets, packId);
       const handoff = await createTargetWithBenchmarkHandoff(
         targetRequest,
         autoBenchmarkAfterAdd
           ? {
               benchmarkPackId: packId,
-              repetitions: automaticSettings.repetitions,
-              warmupRuns: automaticSettings.warmupRuns,
-              concurrency: automaticSettings.concurrency,
-              maxCostUsd: automaticModelBenchmarkMaxCostUsd(packId),
+              benchmarkTargetIds: benchmarkIntent.targetIds,
+              repetitions: benchmarkIntent.repetitions,
+              warmupRuns: benchmarkIntent.warmupRuns,
+              concurrency: benchmarkIntent.concurrency,
+              maxCostUsd: benchmarkIntent.maxCostUsd,
             }
           : {},
       );
@@ -1986,7 +1997,8 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
     const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
     const packLabel = benchmarkPackLabel(packId, modelBenchmarkPacks);
-    const intent = automaticModelRunBuilderIntent(target, packId);
+    const intent = automaticModelBenchmarkIntentForTarget(target, targets, packId);
+    const scopeLabel = intent.targetIds.length > 1 ? 'local/cloud comparison' : 'benchmark';
     if (!autoBenchmarkAfterAdd) {
       openRunBuilder(intent);
       setMessage(`Target ${name} ${validationNote} and ready in Runs`);
@@ -1994,43 +2006,41 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
     if (benchmarkError) {
       openRunBuilder(intent);
-      setMessage(`Target ${name} ${validationNote}, but the automatic ${packLabel} job could not start: ${benchmarkRunFailureMessage(benchmarkError)}`);
+      setMessage(`Target ${name} ${validationNote}, but the automatic ${packLabel} ${scopeLabel} job could not start: ${benchmarkRunFailureMessage(benchmarkError)}`);
       return;
     }
     if (prestartedJob) {
       await onRefresh();
       if (!isJobActive(prestartedJob) && prestartedJob.results.length) {
         openResultsForGroup(prestartedJob.runGroupId, prestartedJob.results[0]?.id);
-        setMessage(`Target ${name} ${validationNote}; capped ${packLabel} completed with ${prestartedJob.results.length} result(s)`);
+        setMessage(`Target ${name} ${validationNote}; capped ${packLabel} ${scopeLabel} completed with ${prestartedJob.results.length} result(s)`);
         return;
       }
       openRunBuilder(intent);
-      setMessage(`Target ${name} ${validationNote}; queued capped ${packLabel} job ${prestartedJob.id.slice(0, 8)}`);
+      setMessage(`Target ${name} ${validationNote}; queued capped ${packLabel} ${scopeLabel} job ${prestartedJob.id.slice(0, 8)}`);
       return;
     }
     try {
-      const automaticSettings = automaticModelBenchmarkSettings(packId);
-      const maxCostUsd = automaticModelBenchmarkMaxCostUsd(packId);
       const job = await startRunJob(
-        [target.id],
+        intent.targetIds,
         false,
         packId,
-        automaticSettings.repetitions,
-        automaticSettings.warmupRuns,
-        automaticSettings.concurrency,
-        maxCostUsd,
+        intent.repetitions ?? 1,
+        intent.warmupRuns ?? 0,
+        intent.concurrency ?? 1,
+        intent.maxCostUsd,
       );
       await onRefresh();
       if (!isJobActive(job) && job.results.length) {
         openResultsForGroup(job.runGroupId, job.results[0]?.id);
-        setMessage(`Target ${name} ${validationNote}; capped ${packLabel} completed with ${job.results.length} result(s)`);
+        setMessage(`Target ${name} ${validationNote}; capped ${packLabel} ${scopeLabel} completed with ${job.results.length} result(s)`);
         return;
       }
       openRunBuilder(intent);
-      setMessage(`Target ${name} ${validationNote}; queued capped ${packLabel} job ${job.id.slice(0, 8)}`);
+      setMessage(`Target ${name} ${validationNote}; queued capped ${packLabel} ${scopeLabel} job ${job.id.slice(0, 8)}`);
     } catch (error) {
       openRunBuilder(intent);
-      setMessage(`Target ${name} ${validationNote}, but the automatic ${packLabel} job could not start: ${benchmarkRunFailureMessage(error)}`);
+      setMessage(`Target ${name} ${validationNote}, but the automatic ${packLabel} ${scopeLabel} job could not start: ${benchmarkRunFailureMessage(error)}`);
     }
   }
 
@@ -7163,6 +7173,48 @@ function automaticModelRunBuilderIntent(target: Target, benchmarkPackId: string)
     concurrency: settings.concurrency,
     maxCostUsd: automaticModelBenchmarkMaxCostUsd(benchmarkPackId),
   };
+}
+
+function automaticModelBenchmarkIntentForTarget(target: Target, targets: Target[], benchmarkPackId: string): RunBuilderIntent {
+  const comparisonIntent = modelComparisonIntentForTarget(target, targets, benchmarkPackId);
+  const settings = automaticModelBenchmarkSettings(benchmarkPackId);
+  if (comparisonIntent) {
+    return {
+      ...comparisonIntent,
+      repetitions: settings.repetitions,
+      warmupRuns: settings.warmupRuns,
+      concurrency: Math.min(2, Math.max(1, comparisonIntent.targetIds.length)),
+      maxCostUsd: automaticModelBenchmarkMaxCostUsd(benchmarkPackId),
+    };
+  }
+  return automaticModelRunBuilderIntent(target, benchmarkPackId);
+}
+
+function plannedModelTarget(id: string, name: string, adapterId: string, baseUrl: string): Target {
+  const classification = plannedModelTargetClassification(adapterId, baseUrl);
+  return {
+    id,
+    name,
+    kind: 'direct_model',
+    adapterId,
+    status: 'unknown',
+    enabled: true,
+    isLocalModel: classification.local,
+    isCloudModel: classification.cloud,
+  };
+}
+
+function plannedModelTargetClassification(adapterId: string, baseUrl: string) {
+  if (cloudModelAdapters.has(adapterId)) {
+    return { local: false, cloud: true };
+  }
+  if (localModelAdapters.has(adapterId)) {
+    return { local: true, cloud: false };
+  }
+  if (baseUrl && dashboardBaseUrlLooksRemote(baseUrl)) {
+    return { local: false, cloud: true };
+  }
+  return { local: true, cloud: false };
 }
 
 function runBuilderIntentForTarget(target: Target, benchmarkPackId = recommendedRunPackIdForTarget(target)): RunBuilderIntent {

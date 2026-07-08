@@ -45,7 +45,7 @@ export async function createTarget(target: { id: string; name: string; kind: str
 
 export async function createTargetWithBenchmarkHandoff(
   target: { id: string; name: string; kind: string; adapterId: string; config?: Record<string, unknown> },
-  options: { benchmarkPackId?: string; repetitions?: number; warmupRuns?: number; concurrency?: number; maxCostUsd?: number } = {},
+  options: { benchmarkPackId?: string; benchmarkTargetIds?: string[]; repetitions?: number; warmupRuns?: number; concurrency?: number; maxCostUsd?: number } = {},
 ): Promise<CreateTargetBenchmarkHandoffResult> {
   if (!isTauri()) {
     const saved = await createTarget(target);
@@ -54,8 +54,9 @@ export async function createTargetWithBenchmarkHandoff(
     let benchmarkError: string | null = null;
     if (options.benchmarkPackId && validation.status !== 'error') {
       try {
+        const targetIds = options.benchmarkTargetIds?.length ? options.benchmarkTargetIds : [saved.id];
         runJob = await startRunJob(
-          [saved.id],
+          targetIds,
           false,
           options.benchmarkPackId,
           options.repetitions ?? 1,
@@ -73,6 +74,7 @@ export async function createTargetWithBenchmarkHandoff(
     request: {
       target,
       benchmarkPackId: options.benchmarkPackId,
+      benchmarkTargetIds: options.benchmarkTargetIds,
       repetitions: options.repetitions ?? 1,
       warmupRuns: options.warmupRuns ?? 0,
       concurrency: options.concurrency ?? 1,
