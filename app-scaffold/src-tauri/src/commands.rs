@@ -16893,6 +16893,74 @@ mod tests {
         );
     }
 
+    #[test]
+    fn create_target_handoff_queues_requested_benchmark_targets() {
+        let conn = store::open_memory().expect("store should open");
+
+        let result = create_target_with_benchmark_handoff_for_conn(
+            &conn,
+            CreateTargetBenchmarkHandoffRequest {
+                target: target_request(
+                    "new-mock",
+                    "New Mock",
+                    "mock",
+                    "mock",
+                    serde_json::json!({}),
+                ),
+                benchmark_pack_id: Some("llm-basics".into()),
+                benchmark_target_ids: vec![
+                    " mock-agent ".into(),
+                    "new-mock".into(),
+                    "mock-agent".into(),
+                ],
+                repetitions: 3,
+                warmup_runs: 1,
+                concurrency: 2,
+                max_cost_usd: Some(1.0),
+            },
+        )
+        .expect("handoff should create target and queue benchmark");
+
+        let validation = result.validation.expect("validation should be present");
+        assert_eq!(validation.status, "ok");
+        assert!(result.benchmark_error.is_none());
+        let job = result.run_job.expect("benchmark job should queue");
+        assert_eq!(job.benchmark_pack_id, "llm-basics");
+        assert_eq!(job.settings.target_count, 2);
+        assert_eq!(job.settings.task_count, 3);
+        assert_eq!(job.settings.repetitions, 3);
+        assert_eq!(job.settings.warmup_runs, 1);
+        assert_eq!(job.settings.concurrency, 2);
+        assert_eq!(job.settings.max_cost_usd, Some(1.0));
+
+        let record = store::get_run_job(&conn, &job.id)
+            .expect("job lookup should work")
+            .expect("job should be persisted");
+        assert_eq!(
+            record.request["targetIds"],
+            serde_json::json!(["mock-agent", "new-mock"])
+        );
+        let groups = store::list_run_groups(&conn).expect("run groups should list");
+        let group = groups
+            .iter()
+            .find(|group| group.id == job.run_group_id)
+            .expect("queued run group should exist");
+        assert_eq!(
+            group.target_ids,
+            vec!["mock-agent".to_string(), "new-mock".to_string()]
+        );
+        assert_eq!(group.config["task_count"], serde_json::json!(3));
+        assert_eq!(
+            group.config["targets"]
+                .as_array()
+                .expect("targets snapshot should be an array")
+                .iter()
+                .filter_map(|target| target["id"].as_str())
+                .collect::<Vec<_>>(),
+            vec!["mock-agent", "new-mock"]
+        );
+    }
+
     fn export_result(
         id: &str,
         target_id: &str,
