@@ -3128,6 +3128,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const [concurrency, setConcurrency] = useState('1');
   const [maxCostUsd, setMaxCostUsd] = useState('');
   const [docker, setDocker] = useState(false);
+  const [runAdvancedOpen, setRunAdvancedOpen] = useState(false);
   const [jobs, setJobs] = useState<RunJob[]>([]);
   const [activeJobId, setActiveJobId] = useState('');
   const [runEstimate, setRunEstimate] = useState<RunEstimate | null>(null);
@@ -3169,6 +3170,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const parsedWarmupRuns = parsePositiveIntegerInRange(warmupRuns, 'Warmup runs', 0, 20);
   const parsedConcurrency = parsePositiveIntegerInRange(concurrency, 'Concurrency', 1, 8);
   const parsedMaxCostUsd = parseOptionalNonNegativeNumber(maxCostUsd, 'Max cost USD');
+  const runAdvancedHasError = Boolean(parsedWarmupRuns.error || parsedConcurrency.error || parsedMaxCostUsd.error);
   const costLimitMessage = runCostLimitMessage(runEstimate, parsedMaxCostUsd.value);
   const blockingEstimateError = blockingRunEstimateErrorMessage(estimateError);
   const runSettingsError = parsedRepetitions.error || parsedWarmupRuns.error || parsedConcurrency.error || parsedMaxCostUsd.error || compatibilityError || unavailableTargetError || taskSelectionError || costLimitMessage || blockingEstimateError;
@@ -3627,10 +3629,15 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
       <div className="form-grid">
         <label>Benchmark pack <select value={selectedPackId} onChange={event => setSelectedPackId(event.target.value)}>{packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name} ({pack.tasks})</option>)}</select></label>
         <label>Repetitions <input type="number" min="1" max="100" step="1" value={repetitions} onChange={event => setRepetitions(event.target.value)} /></label>
-        <label>Warmup runs <input type="number" min="0" max="20" step="1" value={warmupRuns} onChange={event => setWarmupRuns(event.target.value)} /></label>
-        <label>Concurrency <input type="number" min="1" max="8" step="1" value={concurrency} onChange={event => setConcurrency(event.target.value)} /></label>
-        <label>Max cost USD <input type="number" min="0" step="0.000001" value={maxCostUsd} onChange={event => setMaxCostUsd(event.target.value)} /></label>
-        <label className="toggle"><input type="checkbox" checked={docker} onChange={event => setDocker(event.target.checked)} />Docker scoring (network off)</label>
+        <details className="advanced-section" open={runAdvancedOpen || runAdvancedHasError} onToggle={event => setRunAdvancedOpen(event.currentTarget.open)}>
+          <summary><SlidersHorizontal size={14} />Advanced run settings</summary>
+          <div className="form-grid">
+            <label>Warmup runs <input type="number" min="0" max="20" step="1" value={warmupRuns} onChange={event => setWarmupRuns(event.target.value)} /></label>
+            <label>Concurrency <input type="number" min="1" max="8" step="1" value={concurrency} onChange={event => setConcurrency(event.target.value)} /></label>
+            <label>Max cost USD <input type="number" min="0" step="0.000001" value={maxCostUsd} onChange={event => setMaxCostUsd(event.target.value)} /></label>
+            <label className="toggle"><input type="checkbox" checked={docker} onChange={event => setDocker(event.target.checked)} />Docker scoring (network off)</label>
+          </div>
+        </details>
       </div>
       <div className="subsection-head"><strong>Tasks</strong><div className="actions"><span className="mini-tag">{selectedTaskCount}/{packTasks.length || selectedPack?.tasks || 0} selected</span><button disabled={tasksLoading || !packTasks.length || selectedTaskCount === packTasks.length} onClick={selectAllTasks}><ClipboardCheck size={14} />All</button><button disabled={tasksLoading || !selectedTaskCount} onClick={clearTaskSelection}><Square size={14} />None</button></div></div>
       {tasksLoading ? <p className="muted">Loading benchmark tasks...</p> : taskError ? <p className="muted">{taskError}</p> : <div className="checks task-checks">{packTasks.map(task => {

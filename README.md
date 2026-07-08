@@ -176,7 +176,7 @@ Choose the fastest path for the thing you want to prove:
 1. Run `make doctor` and fix required tools before adding targets.
 2. Add at least one target: a local runtime such as Hugging Face GGUF, Ollama, LM Studio, or `llama.cpp`, or a cloud provider such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Gemini.
 3. Validate the target. Validation runs a tiny probe and stores the latest health result so full benchmark runs fail less mysteriously.
-4. Choose a benchmark pack, repetitions, warmups, concurrency, and a max-cost cap for paid providers.
+4. Choose a benchmark pack and repetitions. Advanced run settings keep warmups, concurrency, Docker scoring, and paid-provider cost caps available when needed.
 5. Run the benchmark from the app. BenchForge stores runs in SQLite and writes artifacts under `.benchforge/runs/`.
 6. Compare targets on the Results page by pass rate, weighted score, latency, cost, throughput, model identity, coverage, and evidence grade.
 7. Export a report folder when you need a portable review package with CSV, JSONL, Analysis JSON, copied artifacts, and reproducibility metadata.
@@ -269,7 +269,7 @@ After adding a target, run Validate before benchmarking. Validation records heal
 3. Search the provider catalog when available, or enter a model manually.
 4. Use the built-in provider URL unless you are configuring Azure OpenAI, a proxy, or a generic OpenAI-compatible endpoint.
 5. Validate the target with a tiny completion probe.
-6. Choose a benchmark pack, repetitions, warmups, concurrency, and a max-cost cap. BenchForge blocks capped cloud runs when pricing is missing.
+6. Choose a benchmark pack and repetitions. Advanced run settings include warmups, concurrency, Docker scoring, and a max-cost cap. BenchForge blocks capped cloud runs when pricing is missing.
 7. Run the benchmark and compare results by target, provider, model, pack, task, run group, and status.
 
 Live provider probes are outside the default readiness gate and skip cleanly when no provider key is configured.
