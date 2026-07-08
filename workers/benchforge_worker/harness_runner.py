@@ -63,6 +63,19 @@ IMPORT_FILE_SUFFIXES = {".csv", ".json", ".jsonl", ".log", ".out", ".txt", ".xml
 TEXT_IMPORT_SUFFIXES = {".log", ".out", ".txt"}
 MAX_IMPORT_BYTES = 3_000_000
 MAX_IMPORT_FILES = 50
+RESULT_COLLECTION_KEYS = [
+    "results",
+    "instances",
+    "tasks",
+    "tests",
+    "test_cases",
+    "testcases",
+    "test_results",
+    "cases",
+    "items",
+    "examples",
+    "records",
+]
 
 
 class HarnessConfigError(Exception):
@@ -911,7 +924,7 @@ def summary_from_json(value: Any) -> dict[str, Any] | None:
         if nested_summary and summary_has_counts(nested_summary):
             return merge_summary_score(nested_summary, score)
 
-    for key in ["results", "instances", "tasks", "cases", "items", "examples", "records"]:
+    for key in RESULT_COLLECTION_KEYS:
         nested = value.get(key)
         nested_summary = summary_from_collection(nested)
         if nested_summary:
@@ -986,6 +999,10 @@ def summary_from_collection(value: Any) -> dict[str, Any] | None:
         direct = summary_from_count_mapping(value)
         if direct and summary_has_counts(direct):
             return direct
+        for key in RESULT_COLLECTION_KEYS:
+            nested_summary = summary_from_collection(value.get(key))
+            if nested_summary:
+                return nested_summary
         return summary_from_result_items(list(value.values()))
     return None
 

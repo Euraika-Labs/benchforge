@@ -212,6 +212,44 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(event["error_code"], "benchmark_failed")
             self.assertEqual(event["tests"]["failed"], 1)
 
+    def test_external_harness_parses_json_tests_array_as_benchmark_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            tool = self.write_tool(
+                temp_dir,
+                "fake-tests-array-harness",
+                "import json\n"
+                "print(json.dumps({'tests': ["
+                "{'name': 'one', 'status': 'passed'},"
+                "{'name': 'two', 'status': 'failed'},"
+                "{'name': 'three', 'ok': True}"
+                "]}))\n",
+            )
+            target_config = temp_dir / "target.json"
+            target_config.write_text(json.dumps({"harness": {"command": [str(tool)]}}), encoding="utf-8")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "terminal-bench",
+                "--target-config",
+                str(target_config),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "failed")
+            self.assertAlmostEqual(event["score"], 2 / 3)
+            self.assertEqual(event["error_code"], "benchmark_failed")
+            self.assertEqual(event["tests"]["total"], 3)
+            self.assertEqual(event["tests"]["passed"], 2)
+            self.assertEqual(event["tests"]["failed"], 1)
+
     def test_external_harness_zero_exit_score_only_partial_result_is_failed(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
             temp_dir = Path(raw_dir)
@@ -830,6 +868,49 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(event["tests"]["failed"], 1)
             raw_artifact = Path(event["artifacts"][0]["path"])
             self.assertIn("cases.csv", raw_artifact.read_text(encoding="utf-8"))
+
+    def test_worker_imports_nested_json_test_cases_result(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            imported = temp_dir / "nested-tests.json"
+            imported.write_text(
+                json.dumps(
+                    {
+                        "suite": "sample",
+                        "tests": {
+                            "cases": [
+                                {"id": "one", "result": "passed"},
+                                {"id": "two", "result": "failed"},
+                                {"id": "three", "success": True},
+                            ]
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "evalplus",
+                "--import-path",
+                str(imported),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            event = self.final_event(output)
+            self.assert_import_metadata(event, import_format="json", summary_source="json")
+            self.assertEqual(event["status"], "failed")
+            self.assertAlmostEqual(event["score"], 2 / 3)
+            self.assertEqual(event["tests"]["total"], 3)
+            self.assertEqual(event["tests"]["passed"], 2)
+            self.assertEqual(event["tests"]["failed"], 1)
 
     def test_worker_imports_junit_xml_result(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
