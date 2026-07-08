@@ -482,7 +482,7 @@ export default function App() {
       case 'doctor':
         return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
       case 'settings':
-        return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} />;
+        return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} />;
       default:
         return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
     }
@@ -2018,7 +2018,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     if (wasEditing) {
       if (wasRepairingValidationError && (target.kind === 'direct_model' || target.kind === 'harnessed_model')) {
         const comparisonPackId = recommendedComparisonPackId(packs);
-        const comparisonIntent = modelComparisonIntentForTarget(target, targets, comparisonPackId);
+        const comparisonIntent = modelComparisonIntentForTarget(target, targets, comparisonPackId, { requirePricedCloud: true });
         if (comparisonIntent) {
           openRunBuilder(comparisonIntent);
           setMessage(`Updated target ${name}; ${validationNote}. Run Builder is ready to rerun the local/cloud ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)} comparison with 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap`);
@@ -7304,7 +7304,7 @@ function automaticModelRunBuilderIntent(target: Target, benchmarkPackId: string)
 }
 
 function automaticModelBenchmarkIntentForTarget(target: Target, targets: Target[], benchmarkPackId: string): RunBuilderIntent {
-  const comparisonIntent = modelComparisonIntentForTarget(target, targets, benchmarkPackId);
+  const comparisonIntent = modelComparisonIntentForTarget(target, targets, benchmarkPackId, { requirePricedCloud: true });
   const settings = automaticModelBenchmarkSettings(benchmarkPackId);
   if (comparisonIntent) {
     return {
@@ -7361,7 +7361,7 @@ function runBuilderIntentForTarget(target: Target, benchmarkPackId = recommended
   return intent;
 }
 
-function modelComparisonIntentForTarget(target: Target, targets: Target[], benchmarkPackId: string): RunBuilderIntent | null {
+function modelComparisonIntentForTarget(target: Target, targets: Target[], benchmarkPackId: string, options: { requirePricedCloud?: boolean } = {}): RunBuilderIntent | null {
   if (!targetIsSelectableModel(target)) {
     return null;
   }
@@ -7370,10 +7370,14 @@ function modelComparisonIntentForTarget(target: Target, targets: Target[], bench
   if (!targetIsLocal && !targetIsCloud) {
     return null;
   }
+  if (options.requirePricedCloud && targetIsCloud && !targetHasInputOutputPricing(target)) {
+    return null;
+  }
   const counterparts = targets
     .filter(candidate => candidate.id !== target.id
       && targetIsSelectableModel(candidate)
-      && (targetIsLocal ? isCloudModelTarget(candidate) : isLocalModelTarget(candidate)))
+      && (targetIsLocal ? isCloudModelTarget(candidate) : isLocalModelTarget(candidate))
+      && (!options.requirePricedCloud || !isCloudModelTarget(candidate) || targetHasInputOutputPricing(candidate)))
     .sort(compareModelCounterpartPriority);
   const counterpart = counterparts[0];
   if (!counterpart) {
@@ -7826,7 +7830,7 @@ function parseOptionalIntegerInRange(value: string, label: string, min: number, 
   return parsed;
 }
 
-function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, openRunBuilder, openResultsForGroup }: { busy: boolean; targets: Target[]; packs: BenchmarkPack[]; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void }) {
+function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, setPage, openRunBuilder, openResultsForGroup }: { busy: boolean; targets: Target[]; packs: BenchmarkPack[]; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void }) {
   const [hf, setHf] = useState<HuggingFaceStatus | null>(null);
   const [token, setToken] = useState('');
   const [repoId, setRepoId] = useState('');
@@ -7871,6 +7875,7 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, open
   const selectableCloudTargetCount = selectableCloudTargets.length;
   const selectablePricedCloudTargetCount = selectableCloudTargets.filter(targetHasInputOutputPricing).length;
   const autoCompareReady = autoBenchmarkAfterStart && selectablePricedCloudTargetCount > 0;
+  const cloudComparisonStatus = hfCloudComparisonStatus(selectableCloudTargetCount, selectablePricedCloudTargetCount);
 
   async function refreshHf() {
     setHf(await huggingFaceStatus());
@@ -8694,6 +8699,10 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, open
         <button disabled={busy || !hf?.serverRunning} onClick={stopModel}>Stop</button>
       </div>
       {downloadPlan ? <div className={`preflight-box ${downloadPlan.alreadyDownloaded ? 'ok' : downloadFailed ? 'warn' : ''}`}><strong>Download plan</strong><p>{downloadPlan.summary}</p><div className="mini-grid"><span>{downloadPlan.plannedBytes ? formatBytes(downloadPlan.plannedBytes) : 'size unknown'}</span><span>{downloadPlan.existingBytes ? `${formatBytes(downloadPlan.existingBytes)} local` : 'no complete local file'}</span><span>{downloadPlan.partialBytes ? `${formatBytes(downloadPlan.partialBytes)} partial` : 'no partial fragments'}</span><span>{downloadPlan.alreadyDownloaded ? 'already downloaded' : 'needs transfer'}</span></div><p className="muted">{downloadPlan.diskCheck} {downloadPlan.retryHint}</p><p className="muted">{downloadPlan.localDir}</p></div> : null}
+      {autoBenchmarkAfterStart && !autoCompareReady ? <div className="preflight-box warn">
+        <div className="panel-head"><h2>Cloud comparison</h2><button onClick={() => setPage('targets')}><Boxes size={14} />Cloud target</button></div>
+        <p>{cloudComparisonStatus} The local model flow will still create a target and run the selected pack locally.</p>
+      </div> : null}
       {downloadProgress ? <DownloadProgressPanel progress={downloadProgress} /> : null}
       {downloadJobs.length ? <DownloadJobsTable jobs={downloadJobs} busy={busy} onCancel={cancelDownload} onRetry={retryDownload} onClearFinished={clearFinishedDownloads} /> : null}
       {serverJobs.length ? <ServerJobsTable jobs={serverJobs} busy={busy} onCancel={cancelServerStart} onRetry={retryServerStart} onClearFinished={clearFinishedServerStarts} /> : null}
@@ -8730,6 +8739,16 @@ function hfStartActionLabel(autoBenchmarkAfterStart: boolean, compareWithCloud =
     return 'Start + compare';
   }
   return autoBenchmarkAfterStart ? 'Start + benchmark' : 'Start & add target';
+}
+
+function hfCloudComparisonStatus(cloudTargetCount: number, pricedCloudTargetCount: number) {
+  if (pricedCloudTargetCount > 0) {
+    return `${pricedCloudTargetCount} priced cloud target(s) ready for capped comparison.`;
+  }
+  if (cloudTargetCount > 0) {
+    return 'Cloud comparison is waiting for input and output pricing on a cloud target.';
+  }
+  return 'Cloud comparison is waiting for a selectable cloud target.';
 }
 
 function hfBenchmarkHandoffNote(runBenchmarkAfterStart: boolean, benchmarkPackId: string, modelBenchmarkPacks: BenchmarkPackOption[], compareWithCloud = false) {
