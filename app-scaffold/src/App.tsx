@@ -4587,6 +4587,7 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
   const recommendedTargetIds = recommendedTargets.runTargetIds;
   const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
   const recommendedPack = recommendedComparisonPackId(packs);
+  const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
   function openBenchmarkStep(check: DoctorCheck) {
     if (check.command.startsWith('Runs > Local + cloud') && recommendedTargetIds.length >= 2) {
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, recommendedPack));
@@ -4606,6 +4607,16 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
         setMessage(`Repairing failed ${repairSide} target: ${previewList(targetIds)}`);
         return;
       }
+    }
+    if (check.command.startsWith('Settings') && localRuntimeCheck.check.status === 'ok') {
+      openTargetSetup({ code: 'local_runtime_detect' });
+      setMessage('Detecting local runtimes for the next benchmark step');
+      return;
+    }
+    if (check.command.startsWith('Targets')) {
+      openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
+      setMessage('Preparing cloud target setup for the next benchmark step');
+      return;
     }
     setPage(nextBenchmarkStepPage(check));
   }
