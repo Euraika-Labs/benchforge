@@ -8933,9 +8933,9 @@ fn benchmark_readiness_doctor_checks(
         "Benchmark readiness",
         "recommended",
         if compare_ready {
-            "Use Runs > Local + cloud with LLM Connectivity first, then a broader pack such as LLM Practical Selection."
+            "Use Runs > Local + cloud with LLM Basics for first model-selection evidence; use LLM Connectivity only for endpoint sanity checks."
         } else {
-            "Add both local and cloud model targets, validate them, then start with the LLM Connectivity pack."
+            "Add both local and cloud model targets, validate them, then run LLM Basics with the local/cloud shortcut."
         },
         "Runs > Local + cloud",
     ));
@@ -8973,9 +8973,9 @@ fn benchmark_readiness_doctor_checks(
         if comparison_evidence.is_some() {
             "Open Results to inspect the comparison and export a reproducible report."
         } else if compare_ready {
-            "Run LLM Connectivity with one local and one cloud target, then repeat with a broader pack before model selection."
+            "Run LLM Basics with one local and one cloud target, 3 repetitions, 1 warmup, and a max-cost cap before choosing a model."
         } else {
-            "Add both local and cloud model targets, validate them, then run LLM Connectivity."
+            "Add both local and cloud model targets, validate them, then run LLM Basics with the local/cloud shortcut."
         },
         "Results",
     ));
@@ -9083,10 +9083,10 @@ fn next_benchmark_step_check(
         (
             "warn",
             format!(
-                "run LLM Connectivity against {} local and {} cloud target(s)",
+                "run LLM Basics against {} local and {} cloud target(s)",
                 local_targets, cloud_targets
             ),
-            "Use Runs > Local + cloud with 3 repetitions and 1 warmup before choosing a winner."
+            "Use Runs > Local + cloud with 3 repetitions, 1 warmup, and a max-cost cap; BenchForge seeds LLM Basics by default."
                 .to_string(),
             "Runs > Local + cloud",
         )
@@ -21095,7 +21095,10 @@ mod tests {
         );
         assert!(doctor_check_detail(&checks, "benchmark-next-step")
             .unwrap_or_default()
-            .contains("LLM Connectivity"));
+            .contains("LLM Basics"));
+        assert!(doctor_check_remediation(&checks, "benchmark-next-step")
+            .unwrap_or_default()
+            .contains("seeds LLM Basics by default"));
         assert_eq!(
             doctor_check_command(&checks, "benchmark-next-step"),
             Some("Runs > Local + cloud")
