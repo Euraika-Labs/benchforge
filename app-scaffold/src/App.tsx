@@ -480,11 +480,11 @@ export default function App() {
           />
         );
       case 'doctor':
-        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} />;
+        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
       case 'settings':
         return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} />;
       default:
-        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} />;
+        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
     }
   }, [page, targets, adapters, packs, packDiagnostics, checks, diagnostics, results, runJobs, downloadJobs, serverJobs, artifacts, selectedRunId, selectedResult, artifactText, runBuilderIntent, targetRepairIntent, resultsScopeIntent, busy]);
 
@@ -515,7 +515,7 @@ export default function App() {
   );
 }
 
-function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, setPage, setMessage, openRunBuilder }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void }) {
+function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, setPage, setMessage, openRunBuilder, openTargetRepair }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void }) {
   const errors = checks.filter(c => c.status === 'error').length;
   const warnings = checks.filter(c => c.status === 'warn').length;
   const passed = results.filter(result => result.status === 'passed').length;
@@ -554,6 +554,15 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId));
       setMessage(`Run Builder ready for local/cloud comparison: ${recommendedTargetIds.length} target(s), ${benchmarkPackLabel(benchmarkPackId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
       return;
+    }
+    const repairSide = readinessRepairSide(nextBenchmarkStep);
+    if (repairSide) {
+      const targetIds = failedReadinessRepairTargetIds(targets, repairSide);
+      if (targetIds.length) {
+        openTargetRepair({ targetIds, code: readinessRepairCode(targets, repairSide) });
+        setMessage(`Repairing failed ${repairSide} target: ${previewList(targetIds)}`);
+        return;
+      }
     }
     setPage(nextBenchmarkStep.command ? nextBenchmarkStepPage(nextBenchmarkStep) : 'doctor');
   }
@@ -4185,7 +4194,7 @@ function Results({ results, targets, adapters, artifacts, selectedRunId, setSele
   </section>;
 }
 
-function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void }) {
+function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder, openTargetRepair }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void }) {
   const [actionBusy, setActionBusy] = useState('');
   const [actionLog, setActionLog] = useState('');
   const errors = checks.filter(c => c.status === 'error').length;
@@ -4199,6 +4208,15 @@ function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMe
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, recommendedPack));
       setMessage(`Run Builder ready for local/cloud comparison: ${recommendedTargetIds.length} target(s), ${benchmarkPackLabel(recommendedPack)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
       return;
+    }
+    const repairSide = readinessRepairSide(check);
+    if (repairSide) {
+      const targetIds = failedReadinessRepairTargetIds(targets, repairSide);
+      if (targetIds.length) {
+        openTargetRepair({ targetIds, code: readinessRepairCode(targets, repairSide) });
+        setMessage(`Repairing failed ${repairSide} target: ${previewList(targetIds)}`);
+        return;
+      }
     }
     setPage(nextBenchmarkStepPage(check));
   }
@@ -4248,7 +4266,7 @@ function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMe
         <td><span className={`pill ${c.status}`}>{c.status}</span></td>
         <td>{c.detail}</td>
         <td className="doctor-remediation">{c.remediation || '-'}</td>
-        <td>{doctorAction(c, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep)}</td>
+        <td>{doctorAction(c, targets, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair)}</td>
         <td className="doctor-command">{c.command ? <div className="doctor-command-cell"><code>{c.command}</code><button title="Copy command or path" onClick={() => copyDoctorCommand(c).catch(error => setMessage(String(error)))}><Copy size={14} /></button></div> : '-'}</td>
       </tr>)}</tbody>
     </table>
@@ -4320,6 +4338,9 @@ function nextBenchmarkStepLabel(check: DoctorCheck) {
 }
 
 function nextBenchmarkStepIcon(check: DoctorCheck) {
+  if (check.command.startsWith('Targets > Repair')) {
+    return <Wrench size={14} />;
+  }
   if (check.command.startsWith('Settings') || check.command.startsWith('Targets')) {
     return <Settings size={14} />;
   }
@@ -4327,6 +4348,41 @@ function nextBenchmarkStepIcon(check: DoctorCheck) {
     return <ClipboardCheck size={14} />;
   }
   return <Play size={14} />;
+}
+
+type ReadinessRepairSide = 'local' | 'cloud';
+
+function readinessRepairSide(check: DoctorCheck): ReadinessRepairSide | null {
+  if (check.command.startsWith('Targets > Repair local')) {
+    return 'local';
+  }
+  if (check.command.startsWith('Targets > Repair cloud')) {
+    return 'cloud';
+  }
+  return null;
+}
+
+function failedReadinessRepairTargetIds(targets: Target[], side: ReadinessRepairSide) {
+  return targets
+    .filter(target => target.enabled !== false && target.validationStatus === 'error')
+    .filter(target => side === 'local' ? isLocalModelTarget(target) : isCloudModelTarget(target))
+    .map(target => target.id);
+}
+
+function readinessRepairCode(targets: Target[], side: ReadinessRepairSide) {
+  const target = targets.find(candidate => failedReadinessRepairTargetIds([candidate], side).length > 0);
+  const validation = target ? targetValidationFromTarget(target) : undefined;
+  return validation ? validationRepairCode(validation) : 'needs_review';
+}
+
+function openReadinessTargetRepair(targets: Target[], side: ReadinessRepairSide, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, setMessage: (message: string) => void) {
+  const targetIds = failedReadinessRepairTargetIds(targets, side);
+  if (!targetIds.length) {
+    setMessage(`No failed ${side} target found to repair`);
+    return;
+  }
+  openTargetRepair({ targetIds, code: readinessRepairCode(targets, side) });
+  setMessage(`Repairing failed ${side} target: ${previewList(targetIds)}`);
 }
 
 function DiagnosticsPanel({ diagnostics }: { diagnostics: DiagnosticRecord[] }) {
@@ -4351,7 +4407,7 @@ function isLocalModelToolCheck(check: DoctorCheck) {
   return check.id === 'python3' || check.id === 'hf' || check.id === 'llama-server';
 }
 
-function doctorAction(check: DoctorCheck, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void) {
+function doctorAction(check: DoctorCheck, targets: Target[], actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void) {
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
@@ -4366,11 +4422,23 @@ function doctorAction(check: DoctorCheck, actionBusy: string, installLocalModelT
   }
   if (check.id === 'benchmark-target-local') {
     const repair = check.detail.includes('last validation failed');
-    return <button onClick={() => setPage(repair ? 'targets' : 'settings')}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Local'}</button>;
+    return <button onClick={() => {
+      if (repair) {
+        openReadinessTargetRepair(targets, 'local', openTargetRepair, setMessage);
+      } else {
+        setPage('settings');
+      }
+    }}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Local'}</button>;
   }
   if (check.id === 'benchmark-target-cloud') {
     const repair = check.detail.includes('last validation failed');
-    return <button onClick={() => setPage('targets')}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Cloud'}</button>;
+    return <button onClick={() => {
+      if (repair) {
+        openReadinessTargetRepair(targets, 'cloud', openTargetRepair, setMessage);
+      } else {
+        setPage('targets');
+      }
+    }}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Cloud'}</button>;
   }
   if (check.id === 'benchmark-local-cloud-compare') {
     return <button onClick={() => openBenchmarkStep(check)}><Play size={14} />Runs</button>;
