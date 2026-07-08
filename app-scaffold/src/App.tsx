@@ -2869,7 +2869,16 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const taskSelectionError = taskError || (tasksLoading ? 'Loading benchmark tasks...' : selectedPackId && !selectedTaskCount ? 'Select at least one benchmark task.' : '');
   const directTargets = targets.filter(target => targetIsSelectableModel(target));
   const localTargetIds = directTargets.filter(target => isLocalModelTarget(target)).map(target => target.id);
-  const cloudTargetIds = directTargets.filter(target => isCloudModelTarget(target)).map(target => target.id);
+  const cloudTargets = directTargets.filter(target => isCloudModelTarget(target));
+  const cloudTargetIds = cloudTargets.map(target => target.id);
+  const pricedCloudTargets = cloudTargets.filter(targetHasInputOutputPricing);
+  const preferredCloudTargetIds = (pricedCloudTargets.length ? pricedCloudTargets : cloudTargets).map(target => target.id);
+  const skippedUnpricedCloudTargetIds = pricedCloudTargets.length
+    ? cloudTargets.filter(target => !targetHasInputOutputPricing(target)).map(target => target.id)
+    : [];
+  const localCloudTargetIds = localTargetIds.length && preferredCloudTargetIds.length
+    ? [...localTargetIds, ...preferredCloudTargetIds]
+    : [];
   const modelTargetIds = directTargets.map(target => target.id);
   const selectedTargets = targets.filter(target => selected.includes(target.id));
   const selectedLocalTargets = selectedTargets.filter(target => isLocalModelTarget(target));
@@ -3269,7 +3278,14 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
       setWarmupRuns('1');
       setConcurrency(String(Math.min(2, Math.max(1, targetIds.length))));
       const costCapNote = includesCloudTarget ? ` and ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap` : '';
-      setMessage(`Selected ${targetIds.length} ${label} target(s)${packNote} with 3 repetitions, 1 warmup${costCapNote}`);
+      const pricingNote = skippedUnpricedCloudTargetIds.length
+        ? ` Skipped unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.`
+        : pricedCloudTargets.length
+          ? ' Selected priced cloud target(s) for cost-capped comparison.'
+          : includesCloudTarget
+            ? ' Add cloud pricing before running with a max-cost cap.'
+            : '';
+      setMessage(`Selected ${targetIds.length} ${label} target(s)${packNote} with 3 repetitions, 1 warmup${costCapNote}.${pricingNote}`);
       return;
     }
     const costCapNote = includesCloudTarget ? ` with ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap` : '';
@@ -3329,8 +3345,8 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
         <button disabled={!modelTargetIds.length} onClick={() => applyTargetShortcut('model', modelTargetIds)}><Boxes size={14} />All models</button>
         <button disabled={!localTargetIds.length} onClick={() => applyTargetShortcut('local', localTargetIds)}><TerminalSquare size={14} />Local</button>
         <button disabled={!cloudTargetIds.length} onClick={() => applyTargetShortcut('cloud', cloudTargetIds)}><Database size={14} />Cloud</button>
-        <button disabled={!localTargetIds.length || !cloudTargetIds.length} onClick={() => applyTargetShortcut('local/cloud comparison', [...localTargetIds, ...cloudTargetIds])}><ClipboardCheck size={14} />Local + cloud</button>
-        <button disabled={!localTargetIds.length || !cloudTargetIds.length || !hasReliabilityPack} onClick={() => applyTargetShortcut('local/cloud reliability', [...localTargetIds, ...cloudTargetIds], 'llm-reliability')}><FlaskConical size={14} />Reliability</button>
+        <button disabled={!localCloudTargetIds.length} title={localCloudTargetIds.length ? 'Select all local targets and priced cloud targets when available' : 'Add one enabled local model target and one enabled cloud model target'} onClick={() => applyTargetShortcut('local/cloud comparison', localCloudTargetIds)}><ClipboardCheck size={14} />Local + cloud</button>
+        <button disabled={!localCloudTargetIds.length || !hasReliabilityPack} title={localCloudTargetIds.length ? 'Select all local targets and priced cloud targets for the reliability pack' : 'Add one enabled local model target and one enabled cloud model target'} onClick={() => applyTargetShortcut('local/cloud reliability', localCloudTargetIds, 'llm-reliability')}><FlaskConical size={14} />Reliability</button>
       </div>
       <div className="checks target-checks">{targets.map(target => {
         const checked = selected.includes(target.id);

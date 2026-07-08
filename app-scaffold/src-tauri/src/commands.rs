@@ -16400,7 +16400,8 @@ fn validation_contract_response(request: &str) -> ValidationContractResponse {
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
         .unwrap_or("");
-    if path.ends_with("/models") {
+    let route = path.split('?').next().unwrap_or(path).trim_end_matches('/');
+    if route.ends_with("/models") {
         return ValidationContractResponse {
             status: 200,
             body: serde_json::json!({
@@ -16421,7 +16422,7 @@ fn validation_contract_response(request: &str) -> ValidationContractResponse {
             .to_string(),
         };
     }
-    if path.ends_with("/api/tags") {
+    if route.ends_with("/api/tags") {
         return ValidationContractResponse {
             status: 200,
             body: serde_json::json!({
