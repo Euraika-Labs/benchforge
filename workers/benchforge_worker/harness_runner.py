@@ -1375,10 +1375,16 @@ def score_from_counts(summary: dict[str, Any]) -> float | None:
 
 def status_from_result(returncode: int, summary: dict[str, Any]) -> str:
     failed = summary.get("failed")
-    if returncode == 0:
-        return "passed"
     if isinstance(failed, int) and failed > 0:
         return "failed"
+    total = summary.get("total")
+    if isinstance(failed, int) and failed == 0 and isinstance(total, int) and total > 0:
+        return "passed" if returncode == 0 else "error"
+    score = summary.get("score")
+    if isinstance(score, (int, float)) and float(score) < 1.0:
+        return "failed"
+    if returncode == 0:
+        return "passed"
     return "error"
 
 

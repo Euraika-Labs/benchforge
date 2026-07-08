@@ -166,13 +166,75 @@ class HarnessRunnerTests(unittest.TestCase):
                 str(output),
             )
 
-            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(completed.returncode, 1, completed.stderr)
             event = self.final_event(output)
-            self.assertEqual(event["status"], "passed")
+            self.assertEqual(event["status"], "failed")
             self.assertEqual(event["score"], 0.625)
+            self.assertEqual(event["error_code"], "benchmark_failed")
             self.assertEqual(event["tests"]["total"], 8)
             self.assertEqual(event["tests"]["passed"], 5)
             self.assertEqual(event["tests"]["failed"], 3)
+
+    def test_external_harness_zero_exit_still_fails_when_summary_reports_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            tool = self.write_tool(
+                temp_dir,
+                "fake-green-exit-failing-harness",
+                "import json\nprint(json.dumps({'total': 4, 'passed': 3, 'failed': 1, 'score': 0.75}))\n",
+            )
+            target_config = temp_dir / "target.json"
+            target_config.write_text(json.dumps({"harness": {"command": [str(tool)]}}), encoding="utf-8")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "evalplus",
+                "--target-config",
+                str(target_config),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "failed")
+            self.assertEqual(event["score"], 0.75)
+            self.assertEqual(event["error_code"], "benchmark_failed")
+            self.assertEqual(event["tests"]["failed"], 1)
+
+    def test_external_harness_zero_exit_score_only_partial_result_is_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            tool = self.write_tool(
+                temp_dir,
+                "fake-green-exit-score-harness",
+                "import json\nprint(json.dumps({'score': 0.5}))\n",
+            )
+            target_config = temp_dir / "target.json"
+            target_config.write_text(json.dumps({"harness": {"command": [str(tool)]}}), encoding="utf-8")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "aider-polyglot",
+                "--target-config",
+                str(target_config),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "failed")
+            self.assertEqual(event["score"], 0.5)
+            self.assertEqual(event["error_code"], "benchmark_failed")
 
     def test_harness_command_templates_model_and_base_url(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
