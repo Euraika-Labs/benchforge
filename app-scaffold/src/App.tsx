@@ -499,7 +499,7 @@ export default function App() {
       case 'settings':
         return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} />;
       default:
-        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
+        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
     }
   }, [page, targets, adapters, packs, packDiagnostics, checks, diagnostics, results, runJobs, downloadJobs, serverJobs, artifacts, selectedRunId, selectedResult, artifactText, runBuilderIntent, targetRepairIntent, targetSetupIntent, resultsScopeIntent, busy]);
 
@@ -530,7 +530,7 @@ export default function App() {
   );
 }
 
-function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, setPage, setMessage, openRunBuilder, openTargetRepair }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void }) {
+function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, setPage, setMessage, openRunBuilder, openTargetRepair, openTargetSetup }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
   const errors = checks.filter(c => c.status === 'error').length;
   const warnings = checks.filter(c => c.status === 'warn').length;
   const passed = results.filter(result => result.status === 'passed').length;
@@ -567,6 +567,10 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const recommendedComparisonPack = useMemo(() => recommendedComparisonPackId(packs), [packs]);
   const hasReliabilityPack = packs.some(pack => pack.id === 'llm-reliability');
   const primaryBenchmarkActionLabel = comparisonNeedsPricing ? 'Add cloud pricing' : comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
+  function openLocalRuntimeDetection() {
+    openTargetSetup({ code: 'local_runtime_detect' });
+    setMessage('Detecting local runtimes from Dashboard');
+  }
   function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
     if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && recommendedTargetIds.length >= 2) {
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId));
@@ -586,6 +590,10 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         setMessage(`Repairing failed ${repairSide} target: ${previewList(targetIds)}`);
         return;
       }
+    }
+    if (nextBenchmarkStep.command.startsWith('Settings') && localRuntimeCheck.check.status === 'ok') {
+      openLocalRuntimeDetection();
+      return;
     }
     setPage(nextBenchmarkStep.command ? nextBenchmarkStepPage(nextBenchmarkStep) : 'doctor');
   }
@@ -611,6 +619,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         </div>)}
       </div>
       <div className="actions">
+        <button onClick={openLocalRuntimeDetection}><Search size={14} />Detect runtime</button>
         <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
         <button onClick={() => setPage('targets')}><Boxes size={14} />Cloud target</button>
         <button onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{primaryBenchmarkActionLabel}</button>
