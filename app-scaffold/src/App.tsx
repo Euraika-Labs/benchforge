@@ -482,7 +482,7 @@ export default function App() {
       case 'doctor':
         return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
       case 'settings':
-        return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} />;
+        return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} />;
       default:
         return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} />;
     }
@@ -7877,7 +7877,7 @@ function parseOptionalIntegerInRange(value: string, label: string, min: number, 
   return parsed;
 }
 
-function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, setPage, openRunBuilder, openResultsForGroup }: { busy: boolean; targets: Target[]; packs: BenchmarkPack[]; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void }) {
+function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, setPage, openRunBuilder, openResultsForGroup, openTargetRepair }: { busy: boolean; targets: Target[]; packs: BenchmarkPack[]; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void }) {
   const [hf, setHf] = useState<HuggingFaceStatus | null>(null);
   const [token, setToken] = useState('');
   const [repoId, setRepoId] = useState('');
@@ -7921,8 +7921,21 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, setP
   const selectableCloudTargets = targets.filter(target => targetIsSelectableModel(target) && isCloudModelTarget(target));
   const selectableCloudTargetCount = selectableCloudTargets.length;
   const selectablePricedCloudTargetCount = selectableCloudTargets.filter(targetHasInputOutputPricing).length;
+  const unpricedCloudComparisonTargetIds = selectableCloudTargets
+    .filter(target => !targetHasInputOutputPricing(target))
+    .map(target => target.id);
+  const cloudComparisonNeedsPricing = Boolean(selectableCloudTargetCount && unpricedCloudComparisonTargetIds.length && !selectablePricedCloudTargetCount);
   const autoCompareReady = autoBenchmarkAfterStart && selectablePricedCloudTargetCount > 0;
   const cloudComparisonStatus = hfCloudComparisonStatus(selectableCloudTargetCount, selectablePricedCloudTargetCount);
+
+  function openCloudComparisonSetup() {
+    if (cloudComparisonNeedsPricing) {
+      openTargetRepair({ targetIds: unpricedCloudComparisonTargetIds, code: 'pricing_assumption' });
+      setMessage(`Add input/output pricing before automatic local/cloud comparison: ${previewList(unpricedCloudComparisonTargetIds)}`);
+      return;
+    }
+    setPage('targets');
+  }
 
   async function refreshHf() {
     setHf(await huggingFaceStatus());
@@ -8747,7 +8760,7 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, setP
       </div>
       {downloadPlan ? <div className={`preflight-box ${downloadPlan.alreadyDownloaded ? 'ok' : downloadFailed ? 'warn' : ''}`}><strong>Download plan</strong><p>{downloadPlan.summary}</p><div className="mini-grid"><span>{downloadPlan.plannedBytes ? formatBytes(downloadPlan.plannedBytes) : 'size unknown'}</span><span>{downloadPlan.existingBytes ? `${formatBytes(downloadPlan.existingBytes)} local` : 'no complete local file'}</span><span>{downloadPlan.partialBytes ? `${formatBytes(downloadPlan.partialBytes)} partial` : 'no partial fragments'}</span><span>{downloadPlan.alreadyDownloaded ? 'already downloaded' : 'needs transfer'}</span></div><p className="muted">{downloadPlan.diskCheck} {downloadPlan.retryHint}</p><p className="muted">{downloadPlan.localDir}</p></div> : null}
       {autoBenchmarkAfterStart && !autoCompareReady ? <div className="preflight-box warn">
-        <div className="panel-head"><h2>Cloud comparison</h2><button onClick={() => setPage('targets')}><Boxes size={14} />Cloud target</button></div>
+        <div className="panel-head"><h2>Cloud comparison</h2><button onClick={openCloudComparisonSetup}>{cloudComparisonNeedsPricing ? <Pencil size={14} /> : <Boxes size={14} />}{cloudComparisonNeedsPricing ? 'Add pricing' : 'Cloud target'}</button></div>
         <p>{cloudComparisonStatus} The local model flow will still create a target and run the selected pack locally.</p>
       </div> : null}
       {downloadProgress ? <DownloadProgressPanel progress={downloadProgress} /> : null}
