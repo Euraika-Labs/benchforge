@@ -200,7 +200,7 @@ This validates schemas, builds the frontend, runs Rust and Python tests, checks 
 make dev
 ```
 
-In the desktop app, open Settings, save `HF_TOKEN` if the model is gated, then use Hugging Face Local Model to search for a GGUF repository, pick a quantized file, download it, start `llama-server`, register the target, and run `llm-connectivity` or `llm-basics`.
+In the desktop app, open Settings, save `HF_TOKEN` if the model is gated, then use Hugging Face Local Model to search for a GGUF repository, pick a quantized file, download it, start `llama-server`, register the target, and run `llm-basics`. If a priced cloud target already exists, the guided action defaults to a capped local/cloud comparison.
 
 ### Local Vs Cloud Comparison
 

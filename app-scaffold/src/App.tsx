@@ -5987,6 +5987,11 @@ function targetPriceIsConfigured(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+function targetHasInputOutputPricing(target: Target) {
+  return targetPriceIsConfigured(target.inputPriceUsdPerMillionTokens)
+    && targetPriceIsConfigured(target.outputPriceUsdPerMillionTokens);
+}
+
 function coverageTaskFollowUp(evidence: ComparisonEvidenceAssessment): { packId: string; taskIds: string[]; targetIds: string[] } | null {
   if (!evidence.coverageIssues.length) {
     return null;
@@ -7612,7 +7617,7 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, open
   const [activeServerJobId, setActiveServerJobId] = useState('');
   const [autoStartAfterDownload, setAutoStartAfterDownload] = useState(true);
   const [autoBenchmarkAfterStart, setAutoBenchmarkAfterStart] = useState(true);
-  const [autoCompareAfterStart, setAutoCompareAfterStart] = useState(false);
+  const [autoCompareAfterStart, setAutoCompareAfterStart] = useState(true);
   const [autoBenchmarkPackId, setAutoBenchmarkPackId] = useState('llm-basics');
   const [preflight, setPreflight] = useState<ModelPreflight | null>(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
@@ -7628,7 +7633,10 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, open
   const activeDownloadCount = downloadJobs.filter(isDownloadJobActive).length;
   const activeServerStartCount = serverJobs.filter(isServerJobActive).length;
   const downloadedGgufCount = hf?.models.reduce((total, model) => total + model.ggufFiles.length, 0) ?? 0;
-  const selectableCloudTargetCount = targets.filter(target => targetIsSelectableModel(target) && isCloudModelTarget(target)).length;
+  const selectableCloudTargets = targets.filter(target => targetIsSelectableModel(target) && isCloudModelTarget(target));
+  const selectableCloudTargetCount = selectableCloudTargets.length;
+  const selectablePricedCloudTargetCount = selectableCloudTargets.filter(targetHasInputOutputPricing).length;
+  const autoCompareReady = autoBenchmarkAfterStart && selectablePricedCloudTargetCount > 0;
 
   async function refreshHf() {
     setHf(await huggingFaceStatus());
@@ -7749,7 +7757,7 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, open
           job.runConnectivityAfterStart ?? autoBenchmarkAfterStart,
           job.autoBenchmarkPackId ?? autoBenchmarkPackId,
           modelBenchmarkPacks,
-          Boolean(job.autoCompareAfterStart) && selectableCloudTargetCount > 0,
+          Boolean(job.autoCompareAfterStart) && selectablePricedCloudTargetCount > 0,
         );
         setMessage(`Downloaded ${job.repoId}; starting local server${benchmarkNote}`);
         try {
@@ -8065,7 +8073,7 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, open
       const settings = localServerSettings();
       const serverJobId = await startModelFromSelection(hf, settings);
       if (serverJobId) {
-        setMessage(`Server start job ${serverJobId.slice(0, 8)} queued${hfBenchmarkHandoffNote(autoBenchmarkAfterStart, autoBenchmarkPackId, modelBenchmarkPacks, autoCompareAfterStart && selectableCloudTargetCount > 0)}`);
+        setMessage(`Server start job ${serverJobId.slice(0, 8)} queued${hfBenchmarkHandoffNote(autoBenchmarkAfterStart, autoBenchmarkPackId, modelBenchmarkPacks, autoCompareAfterStart && selectablePricedCloudTargetCount > 0)}`);
       }
     } catch (error) {
       setMessage(String(error));
@@ -8255,10 +8263,15 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, open
 
   function hfBenchmarkIntentForTarget(target: Target, benchmarkPackId: string, allowComparison: boolean, compareAfterStart: boolean) {
     const localIntent = automaticModelRunBuilderIntent(target, benchmarkPackId);
-    if (!allowComparison || !compareAfterStart || !selectableCloudTargetCount) {
+    if (!allowComparison || !compareAfterStart || !selectablePricedCloudTargetCount) {
       return localIntent;
     }
-    const comparisonTargets = [target, ...targets.filter(candidate => candidate.id !== target.id)];
+    const comparisonTargets = [
+      target,
+      ...targets
+        .filter(candidate => candidate.id !== target.id)
+        .filter(candidate => !isCloudModelTarget(candidate) || targetHasInputOutputPricing(candidate)),
+    ];
     return modelComparisonIntentForTarget(target, comparisonTargets, benchmarkPackId) ?? localIntent;
   }
 
@@ -8428,21 +8441,21 @@ function SettingsPage({ busy, targets, packs, setBusy, setMessage, refresh, open
         <button disabled={busy || modelFileBusy || !repoId.trim()} onClick={() => inspectModelFiles().catch(error => setMessage(String(error)))}><Search size={16} />{modelFileBusy ? 'Resolving' : 'Files'}</button>
         <label className="toggle"><input type="checkbox" checked={autoStartAfterDownload} onChange={event => setAutoStartAfterDownload(event.target.checked)} />Start after download</label>
         <label className="toggle"><input type="checkbox" checked={autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkAfterStart(event.target.checked)} />Run benchmark after start</label>
-        <label className="toggle" title={selectableCloudTargetCount ? 'Include the first selectable cloud target in the automatic benchmark' : 'Add a selectable cloud target before automatic local/cloud comparison'}>
+        <label className="toggle" title={selectablePricedCloudTargetCount ? 'Include the first priced cloud target in the automatic benchmark' : selectableCloudTargetCount ? 'Add input/output pricing to a cloud target before automatic local/cloud comparison' : 'Add a selectable cloud target before automatic local/cloud comparison'}>
           <input
             type="checkbox"
-            checked={autoCompareAfterStart && selectableCloudTargetCount > 0}
-            disabled={!autoBenchmarkAfterStart || !selectableCloudTargetCount}
+            checked={autoCompareAfterStart && selectablePricedCloudTargetCount > 0}
+            disabled={!autoBenchmarkAfterStart || !selectablePricedCloudTargetCount}
             onChange={event => setAutoCompareAfterStart(event.target.checked)}
           />
           Compare with cloud target
         </label>
         <label>Benchmark pack <select value={autoBenchmarkPackId} disabled={!autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
-        <button disabled={busy || activeDownloadInProgress || activeServerStartInProgress || !repoId.trim()} onClick={downloadModel}>{downloadFailed ? <RotateCcw size={16} /> : <Download size={16} />}{hfDownloadActionLabel(downloadFailed, autoStartAfterDownload, autoBenchmarkAfterStart)}</button>
+        <button disabled={busy || activeDownloadInProgress || activeServerStartInProgress || !repoId.trim()} onClick={downloadModel}>{downloadFailed ? <RotateCcw size={16} /> : <Download size={16} />}{hfDownloadActionLabel(downloadFailed, autoStartAfterDownload, autoBenchmarkAfterStart, autoCompareReady && autoCompareAfterStart)}</button>
         <label>Port <input type="number" min="1024" max="65535" step="1" value={port} onChange={event => setPort(Number(event.target.value))} /></label>
         <label>Context <input type="number" min="128" max="131072" step="1" value={context} onChange={event => { setContext(Number(event.target.value)); setPreflight(null); }} /></label>
         <button disabled={busy || preflightBusy || !repoId.trim()} onClick={() => runPreflight().catch(error => setMessage(String(error)))}><ShieldCheck size={16} />{preflightBusy ? 'Checking' : 'Check'}</button>
-        <button disabled={busy || activeServerStartInProgress || !repoId.trim()} onClick={startModel}><Play size={16} />{hfStartActionLabel(autoBenchmarkAfterStart)}</button>
+        <button disabled={busy || activeServerStartInProgress || !repoId.trim()} onClick={startModel}><Play size={16} />{hfStartActionLabel(autoBenchmarkAfterStart, autoCompareReady && autoCompareAfterStart)}</button>
         <button disabled={busy || activeServerStartInProgress || !hf?.serverRunning || !repoId.trim()} onClick={addLocalTarget}><Plus size={16} />Add target</button>
         <button disabled={busy || !hf?.serverRunning} onClick={stopModel}>Stop</button>
       </div>
@@ -8462,9 +8475,12 @@ function hfPythonReadyForSetup(hf: HuggingFaceStatus | null) {
   return Boolean(hf?.hfCliAvailable || hf?.pythonSupported);
 }
 
-function hfDownloadActionLabel(downloadFailed: boolean, autoStartAfterDownload: boolean, autoBenchmarkAfterStart: boolean) {
+function hfDownloadActionLabel(downloadFailed: boolean, autoStartAfterDownload: boolean, autoBenchmarkAfterStart: boolean, compareWithCloud = false) {
   if (downloadFailed) {
     return 'Retry download';
+  }
+  if (autoStartAfterDownload && autoBenchmarkAfterStart && compareWithCloud) {
+    return 'Download + compare';
   }
   if (autoStartAfterDownload && autoBenchmarkAfterStart) {
     return 'Download + benchmark';
@@ -8475,7 +8491,10 @@ function hfDownloadActionLabel(downloadFailed: boolean, autoStartAfterDownload: 
   return 'Download';
 }
 
-function hfStartActionLabel(autoBenchmarkAfterStart: boolean) {
+function hfStartActionLabel(autoBenchmarkAfterStart: boolean, compareWithCloud = false) {
+  if (autoBenchmarkAfterStart && compareWithCloud) {
+    return 'Start + compare';
+  }
   return autoBenchmarkAfterStart ? 'Start + benchmark' : 'Start & add target';
 }
 
