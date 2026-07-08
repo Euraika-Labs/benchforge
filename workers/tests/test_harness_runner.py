@@ -242,6 +242,66 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(event["score"], 0.5)
             self.assertEqual(event["error_code"], "benchmark_failed")
 
+    def test_external_harness_percent_score_is_normalized_before_status(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            tool = self.write_tool(
+                temp_dir,
+                "fake-percent-score-harness",
+                "import json\nprint(json.dumps({'score': 75}))\n",
+            )
+            target_config = temp_dir / "target.json"
+            target_config.write_text(json.dumps({"harness": {"command": [str(tool)]}}), encoding="utf-8")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "evalplus",
+                "--target-config",
+                str(target_config),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "failed")
+            self.assertEqual(event["score"], 0.75)
+            self.assertEqual(event["error_code"], "benchmark_failed")
+
+    def test_external_harness_invalid_score_without_counts_is_unparsed_error(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            tool = self.write_tool(
+                temp_dir,
+                "fake-invalid-score-harness",
+                "import json\nprint(json.dumps({'score': 125}))\n",
+            )
+            target_config = temp_dir / "target.json"
+            target_config.write_text(json.dumps({"harness": {"command": [str(tool)]}}), encoding="utf-8")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "evalplus",
+                "--target-config",
+                str(target_config),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 2, completed.stderr)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "error")
+            self.assertIsNone(event["score"])
+            self.assertEqual(event["error_code"], "harness_unparsed")
+
     def test_external_harness_zero_exit_without_summary_is_error_not_pass(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
             temp_dir = Path(raw_dir)
@@ -701,6 +761,35 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(event["tests"]["total"], 4)
             self.assertEqual(event["tests"]["passed"], 3)
             self.assertEqual(event["tests"]["failed"], 1)
+
+    def test_worker_imports_csv_percent_score_as_normalized_result(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            imported = temp_dir / "suite-percent-summary.csv"
+            imported.write_text(
+                "total,passed,failed,accuracy\n4,3,1,75\n",
+                encoding="utf-8",
+            )
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "evalplus",
+                "--import-path",
+                str(imported),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 1, completed.stderr)
+            event = self.final_event(output)
+            self.assert_import_metadata(event, import_format="csv", summary_source="csv")
+            self.assertEqual(event["status"], "failed")
+            self.assertEqual(event["score"], 0.75)
+            self.assertEqual(event["tests"]["total"], 4)
 
     def test_worker_imports_csv_case_results_from_directory(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:

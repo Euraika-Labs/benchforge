@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import shlex
@@ -951,10 +952,17 @@ def summary_from_count_mapping(source: dict[str, Any]) -> dict[str, Any] | None:
             "errors",
         ],
     )
-    score = first_number(source, ["score", "pass_rate", "accuracy", "pass@1", "pass_at_1", "resolved_rate"])
-    percent_score = first_number(source, ["score_percent", "pass_percent", "accuracy_percent", "pass@1_percent"])
-    if score is None and percent_score is not None:
-        score = percent_score / 100.0
+    score = first_normalized_score(
+        source,
+        ["score", "pass_rate", "accuracy", "pass@1", "pass_at_1", "resolved_rate"],
+        percent=False,
+    )
+    if score is None:
+        score = first_normalized_score(
+            source,
+            ["score_percent", "pass_percent", "accuracy_percent", "pass@1_percent"],
+            percent=True,
+        )
     if total is None and passed is not None and failed is not None:
         total = passed + failed
     if failed is None and total is not None and passed is not None:
@@ -1333,18 +1341,32 @@ def first_count(source: dict[str, Any], keys: list[str]) -> float | None:
     return None
 
 
-def first_number(source: dict[str, Any], keys: list[str]) -> float | None:
+def first_normalized_score(source: dict[str, Any], keys: list[str], *, percent: bool) -> float | None:
     for key in keys:
-        value = source.get(key)
-        if isinstance(value, bool):
-            continue
-        if isinstance(value, (int, float)):
-            return float(value)
-        if isinstance(value, str):
-            try:
-                return float(value)
-            except ValueError:
-                continue
+        score = normalized_score_value(source.get(key), percent=percent)
+        if score is not None:
+            return score
+    return None
+
+
+def normalized_score_value(value: Any, *, percent: bool) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        raw = float(value)
+    elif isinstance(value, str):
+        try:
+            raw = float(value.strip().removesuffix("%"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if not math.isfinite(raw) or raw < 0:
+        return None
+    if raw <= 1.0:
+        return raw
+    if raw <= 100.0:
+        return raw / 100.0
     return None
 
 
@@ -1353,7 +1375,7 @@ def summary_from_text(text: str) -> dict[str, Any]:
     for pattern in [r"pass@1\s*[:=]\s*([0-9.]+)", r"accuracy\s*[:=]\s*([0-9.]+)", r"score\s*[:=]\s*([0-9.]+)"]:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
-            score = float(match.group(1))
+            score = normalized_score_value(match.group(1), percent=False)
             break
     passed = failed = total = None
     match = re.search(r"(\d+)\s+passed(?:,\s*(\d+)\s+failed)?", text, flags=re.IGNORECASE)
