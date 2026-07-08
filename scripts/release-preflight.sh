@@ -76,7 +76,8 @@ require_contains(repo_root / "README.md", "CONTRIBUTING.md", "root README")
 require_contains(repo_root / "README.md", "SECURITY.md", "root README")
 require_contains(repo_root / "README.md", "make verify-distribution-dmg", "root README")
 require_contains(root / "README.md", "Apache License 2.0", "app README")
-require_contains(root / "README.md", "../CONTRIBUTING.md", "app README")
+app_contributing_ref = "../CONTRIBUTING.md" if root != repo_root else "CONTRIBUTING.md"
+require_contains(root / "README.md", app_contributing_ref, "app README")
 require_contains(root / "README.md", "make verify-distribution-dmg", "app README")
 
 for template in sorted((repo_root / ".github" / "ISSUE_TEMPLATE").glob("*.yml")):

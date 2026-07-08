@@ -2,20 +2,20 @@
 
 ## Project Structure & Module Organization
 
-BenchForge is a macOS desktop app for benchmarking local and cloud LLMs. The main project lives in `benchforge-blueprint/`.
+BenchForge is a macOS desktop app for benchmarking local and cloud LLMs.
 
-- `benchforge-blueprint/app-scaffold/`: Tauri desktop app. React/TypeScript UI lives in `src/`; Rust backend lives in `src-tauri/src/`.
-- `benchforge-blueprint/workers/`: Python worker package (`benchforge_worker`) for external harnesses, imports, and security checks.
-- `benchforge-blueprint/benchmark-packs/`: built-in benchmark pack metadata and task YAML.
-- `benchforge-blueprint/adapters/`: YAML target definitions for local runtimes, cloud providers, CLI agents, and harness targets.
-- `benchforge-blueprint/fixtures/`: small Python and JavaScript projects used by smoke and regression tests.
-- `benchforge-blueprint/scripts/`: bootstrap, doctor, readiness, schema validation, smoke, and packaging helpers.
-- `benchforge-blueprint/docs/` and `benchforge-blueprint/prompts/`: architecture/product notes and ordered implementation prompts.
-- `benchforge-blueprint/.benchforge/`: local models, runs, exports, and readiness logs. Do not commit this data.
+- `app-scaffold/`: Tauri desktop app. React/TypeScript UI lives in `src/`; Rust backend lives in `src-tauri/src/`.
+- `workers/`: Python worker package (`benchforge_worker`) for external harnesses, imports, and security checks.
+- `benchmark-packs/`: built-in benchmark pack metadata and task YAML.
+- `adapters/`: YAML target definitions for local runtimes, cloud providers, CLI agents, and harness targets.
+- `fixtures/`: small Python and JavaScript projects used by smoke and regression tests.
+- `scripts/`: bootstrap, doctor, readiness, schema validation, smoke, and packaging helpers.
+- `docs/` and `prompts/`: architecture/product notes and ordered implementation prompts.
+- `.benchforge/`: local models, runs, exports, and readiness logs. Do not commit this data.
 
 ## Build, Test, and Development Commands
 
-Run commands from `benchforge-blueprint/` unless noted.
+Run commands from the repository root unless noted.
 
 - `./scripts/bootstrap.sh`: install app dependencies and create `workers/.venv/`.
 - `make doctor`: check required tools and report optional runtime helpers.
@@ -35,4 +35,4 @@ Prefer `make test` before handoff. Use focused checks while developing: `cargo t
 
 ## Commit & Pull Request Guidelines
 
-This export may not include `.git` history. Use concise imperative commits with scope, such as `app: surface import bounds` or `workers: reject unsafe imports`. Pull requests should explain user-visible behavior, list verification commands, link related issues or roadmap items, and include screenshots for UI changes. Never commit secrets, API keys, downloaded models, restricted datasets, `.benchforge/`, or host-specific paths.
+Use concise imperative commits with scope, such as `app: surface import bounds` or `workers: reject unsafe imports`. Pull requests should explain user-visible behavior, list verification commands, link related issues or roadmap items, and include screenshots for UI changes. Never commit secrets, API keys, downloaded models, restricted datasets, `.benchforge/`, or host-specific paths.

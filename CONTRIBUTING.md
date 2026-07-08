@@ -4,10 +4,9 @@ Thanks for helping make BenchForge a reliable local and cloud LLM benchmark tool
 
 ## Development Setup
 
-Work from the app source directory:
+Work from the repository root:
 
 ```bash
-cd benchforge-blueprint
 ./scripts/bootstrap.sh
 make doctor
 make test

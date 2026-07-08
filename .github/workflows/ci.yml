@@ -19,10 +19,6 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 45
 
-    defaults:
-      run:
-        working-directory: benchforge-blueprint
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +31,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: benchforge-blueprint/app-scaffold/package-lock.json
+          cache-dependency-path: app-scaffold/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -51,8 +47,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            benchforge-blueprint/app-scaffold/src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('benchforge-blueprint/app-scaffold/src-tauri/Cargo.lock') }}
+            app-scaffold/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('app-scaffold/src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -73,5 +69,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: readiness-logs
-          path: benchforge-blueprint/.benchforge/readiness/
+          path: .benchforge/readiness/
           if-no-files-found: ignore

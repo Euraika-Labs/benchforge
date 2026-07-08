@@ -4,9 +4,7 @@ BenchForge is a macOS desktop workbench for benchmarking local and cloud LLMs wi
 
 Use it to answer practical model-selection questions: which local or hosted model passes the same tasks, how fast it runs, what it costs, what failed, and whether the evidence is strong enough to trust.
 
-The app implementation lives in [`benchforge-blueprint/`](benchforge-blueprint/). Run development commands from that directory unless noted otherwise.
-
-This repository includes the desktop app, built-in benchmark packs, provider and runtime adapters, Python worker harnesses, packaging scripts, community files, and the implementation roadmap.
+This repository includes the desktop app, built-in benchmark packs, provider and runtime adapters, Python worker harnesses, packaging scripts, community files, and the implementation roadmap. Development commands run from the repository root unless noted otherwise.
 
 ## Contents
 
@@ -89,15 +87,15 @@ BenchForge can run prompt, repo/code, security, and external harness tasks again
 
 | Path | Purpose |
 | --- | --- |
-| `benchforge-blueprint/app-scaffold/` | Tauri desktop app. React/TypeScript UI is in `src/`; Rust backend is in `src-tauri/src/`. |
-| `benchforge-blueprint/workers/` | Python worker package for external harnesses and defensive security checks. |
-| `benchforge-blueprint/benchmark-packs/` | Built-in benchmark pack definitions and task YAML. |
-| `benchforge-blueprint/adapters/` | YAML adapter definitions for local runtimes, cloud providers, CLI agents, and harness targets. |
-| `benchforge-blueprint/fixtures/` | Small test projects used by repo/code and security smoke benchmarks. |
-| `benchforge-blueprint/scripts/` | Bootstrap, doctor, readiness, smoke, schema validation, and packaging scripts. |
-| `benchforge-blueprint/docs/` | Product requirements, architecture, data model, security model, benchmark strategy, UI spec, and roadmap. |
-| `benchforge-blueprint/prompts/` | Ordered implementation prompts from the original blueprint. |
-| `benchforge-blueprint/.benchforge/` | Local runtime data, models, runs, exports, and readiness logs. Do not commit this directory. |
+| `app-scaffold/` | Tauri desktop app. React/TypeScript UI is in `src/`; Rust backend is in `src-tauri/src/`. |
+| `workers/` | Python worker package for external harnesses and defensive security checks. |
+| `benchmark-packs/` | Built-in benchmark pack definitions and task YAML. |
+| `adapters/` | YAML adapter definitions for local runtimes, cloud providers, CLI agents, and harness targets. |
+| `fixtures/` | Small test projects used by repo/code and security smoke benchmarks. |
+| `scripts/` | Bootstrap, doctor, readiness, smoke, schema validation, and packaging scripts. |
+| `docs/` | Product requirements, architecture, data model, security model, benchmark strategy, UI spec, and roadmap. |
+| `prompts/` | Ordered implementation prompts from the original blueprint. |
+| `.benchforge/` | Local runtime data, models, runs, exports, and readiness logs. Do not commit this directory. |
 | `.github/` | Issue templates and pull request template. |
 
 ## Architecture At A Glance
@@ -138,7 +136,6 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Bootstrap and launch:
 
 ```bash
-cd benchforge-blueprint
 ./scripts/bootstrap.sh
 make doctor
 make test
@@ -158,7 +155,7 @@ Choose the fastest path for the thing you want to prove:
 
 | Goal | Start with |
 | --- | --- |
-| Test the app and built-in fixtures | `cd benchforge-blueprint && make test && make benchmark-readiness` |
+| Test the app and built-in fixtures | `make test && make benchmark-readiness` |
 | Benchmark a GGUF model from Hugging Face | `make dev`, then use Settings -> Hugging Face Local Model |
 | Compare a local server to a cloud model | Add/validate both targets, then run an `llm-*` pack with at least 3 repetitions |
 | Verify report quality | `make report-smoke` or export a report folder from Results |
@@ -180,7 +177,7 @@ Choose the fastest path for the thing you want to prove:
 2. Add at least one target: a local runtime such as Hugging Face GGUF, Ollama, LM Studio, or `llama.cpp`, or a cloud provider such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Gemini.
 3. Validate the target. Validation runs a tiny probe and stores the latest health result so full benchmark runs fail less mysteriously.
 4. Choose a benchmark pack, repetitions, warmups, concurrency, and a max-cost cap for paid providers.
-5. Run the benchmark from the app. BenchForge stores runs in SQLite and writes artifacts under `benchforge-blueprint/.benchforge/runs/`.
+5. Run the benchmark from the app. BenchForge stores runs in SQLite and writes artifacts under `.benchforge/runs/`.
 6. Compare targets on the Results page by pass rate, weighted score, latency, cost, throughput, model identity, coverage, and evidence grade.
 7. Export a report folder when you need a portable review package with CSV, JSONL, Analysis JSON, copied artifacts, and reproducibility metadata.
 
@@ -191,17 +188,15 @@ Use these paths to prove the tool works before investing in larger benchmark run
 ### Offline App And Pack Check
 
 ```bash
-cd benchforge-blueprint
 make test
 make benchmark-readiness
 ```
 
-This validates schemas, builds the frontend, runs Rust and Python tests, checks benchmark pack contracts, exercises worker imports, and writes readiness logs under `benchforge-blueprint/.benchforge/readiness/`.
+This validates schemas, builds the frontend, runs Rust and Python tests, checks benchmark pack contracts, exercises worker imports, and writes readiness logs under `.benchforge/readiness/`.
 
 ### Local Hugging Face GGUF Run
 
 ```bash
-cd benchforge-blueprint
 make dev
 ```
 
@@ -231,7 +226,6 @@ Use the app's Settings and Targets screens whenever possible. BenchForge stores 
 Example:
 
 ```bash
-cd benchforge-blueprint
 OPENAI_API_KEY=sk-... HF_TOKEN=hf_... make dev
 ```
 
@@ -251,7 +245,6 @@ Automatic here means BenchForge owns the app-side job flow after you choose a mo
 Useful smoke checks:
 
 ```bash
-cd benchforge-blueprint
 make hf-local-smoke
 make hf-local-cloud-basics-smoke
 ```
@@ -281,7 +274,6 @@ After adding a target, run Validate before benchmarking. Validation records heal
 Live provider probes are outside the default readiness gate and skip cleanly when no provider key is configured.
 
 ```bash
-cd benchforge-blueprint
 BENCHFORGE_LIVE_CLOUD_PROVIDERS=openai,anthropic,openrouter,gemini make live-cloud-smoke
 BENCHFORGE_LIVE_CLOUD_RUN=1 make live-cloud-smoke
 ```
@@ -290,7 +282,7 @@ BENCHFORGE_LIVE_CLOUD_RUN=1 make live-cloud-smoke
 
 CLI agent targets run product agents such as Codex CLI, Claude Code, GitHub Copilot CLI, and Mistral Vibe against repo/code tasks. BenchForge creates an isolated Git workspace, renders the adapter prompt, applies configured adapter environment variables, runs the CLI with a timeout, captures `cli-stdout.txt`, `cli-stderr.txt`, `cli-agent-command.json`, `diff.patch`, scorer output, and the final `result.json`.
 
-Built-in CLI adapters live under `benchforge-blueprint/adapters/agents/`. Advanced users can also create a custom CLI target by setting `command`, `args`, optional `working_dir`, `env`, and `validation.command_args` in target config. Template variables include `{{prompt}}`, `{{workspace}}`, `{{model}}`, and `{{max_turns}}`.
+Built-in CLI adapters live under `adapters/agents/`. Advanced users can also create a custom CLI target by setting `command`, `args`, optional `working_dir`, `env`, and `validation.command_args` in target config. Template variables include `{{prompt}}`, `{{workspace}}`, `{{model}}`, and `{{max_turns}}`.
 
 CLI command metadata in artifacts and reports redacts secrets and replaces the raw task prompt with `<task_prompt>` while preserving prompt SHA-256 hashes for reproducibility.
 
@@ -312,7 +304,7 @@ Built-in pack IDs include:
 | `security-defensive` | Worker-backed defensive Semgrep/Bandit/dependency/secret checks with fallbacks. |
 | `evalplus`, `aider-polyglot-subset`, `terminal-bench-subset`, `swebench-lite-subset` | External harness-style benchmark entry points. |
 
-BenchForge loads built-in packs from `benchforge-blueprint/benchmark-packs/` and user packs from `.benchforge/benchmark-packs/`. Private prompt packs can be created in the app, imported from folders or zip archives, and exported for sharing. Advanced users can add more roots with `BENCHFORGE_BENCHMARK_PACK_DIRS`.
+BenchForge loads built-in packs from `benchmark-packs/` and user packs from `.benchforge/benchmark-packs/`. Private prompt packs can be created in the app, imported from folders or zip archives, and exported for sharing. Advanced users can add more roots with `BENCHFORGE_BENCHMARK_PACK_DIRS`.
 
 Pack calibration metadata is captured in run reproducibility and affects whether results can become comparison-ready. Built-in LLM comparison packs declare calibration quality gates for local and cloud baseline evidence, provider-confirmed served model IDs, full pack/task coverage, at least three repetitions per task/target, cloud cost metrics, and one generation policy.
 
@@ -358,7 +350,7 @@ Review exported prompts, responses, raw payloads, diffs, and logs before sharing
 
 ## Data, Secrets, And Safety
 
-- Source/dev runs store local app data under `benchforge-blueprint/.benchforge/`; the installed macOS app uses `~/Library/Application Support/BenchForge`. Use `BENCHFORGE_DATA_DIR=/path/to/data` for an isolated store.
+- Source/dev runs store local app data under `.benchforge/`; the installed macOS app uses `~/Library/Application Support/BenchForge`. Use `BENCHFORGE_DATA_DIR=/path/to/data` for an isolated store.
 - API keys are stored in macOS Keychain or read from configured environment variables. They should not be committed or placed in target JSON.
 - Target configs and exports redact secret-shaped fields such as `authorization`, `access_token`, `client_secret`, `token`, and `password`.
 - Repo/code tasks run in disposable Git workspaces. BenchForge records the baseline commit/tree, captures `diff.patch` including untracked source files, excludes generated caches such as `.benchforge-venv` and `node_modules`, and records sandbox level plus permission mode in artifacts and reports.
@@ -369,7 +361,7 @@ Review exported prompts, responses, raw payloads, diffs, and logs before sharing
 
 ## Development Commands
 
-Run these from `benchforge-blueprint/`.
+Run these from the repository root.
 
 | Command | Description |
 | --- | --- |
@@ -399,7 +391,6 @@ Use focused `make *-smoke` targets when changing a specific workflow. Use `make 
 Build a local DMG:
 
 ```bash
-cd benchforge-blueprint
 make release-preflight
 make package-dmg
 make verify-dmg
@@ -409,7 +400,6 @@ make install-smoke-dmg
 For a public release DMG, enable distribution checks and provide Apple signing plus notarization credentials:
 
 ```bash
-cd benchforge-blueprint
 BENCHFORGE_RELEASE_DISTRIBUTION=1 \
 APPLE_SIGNING_IDENTITY="Developer ID Application: Example" \
 APPLE_ID="developer@example.com" \
@@ -425,14 +415,14 @@ Use `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` instead of a local keyc
 | Symptom | Fix |
 | --- | --- |
 | Hugging Face CLI install says Python 3.10+ is required. | Install a newer Python with `brew install python`, rerun `./scripts/bootstrap.sh`, or use `BENCHFORGE_PYTHON=/opt/homebrew/bin/python3 ./scripts/bootstrap.sh` if `python3` still points to an older system interpreter. BenchForge can still use `curl` fallback for public downloads. |
-| The browser preview opens but benchmarks do not run. | Use `make dev` from `benchforge-blueprint/`; the Vite preview cannot access Keychain, subprocesses, provider calls, or local downloads. |
+| The browser preview opens but benchmarks do not run. | Use `make dev` from the repository root; the Vite preview cannot access Keychain, subprocesses, provider calls, or local downloads. |
 | Hugging Face search works but download does not start. | Check that the model is public or your `HF_TOKEN` is saved, the gated model license has been accepted, the selected file is a real `.gguf`, and the model cache has enough disk space. Retry from the Hugging Face job row after fixing the cause. |
 | A GGUF downloads but no benchmark is queued. | Confirm Start after download and an automatic benchmark pack were selected. Check the Jobs and Targets views for a failed `llama-server` start, occupied port, target validation error, or missing runtime tool. |
 | Cloud target validation says no key is configured. | Save the provider key in the app or launch with the matching environment variable, such as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. |
 | A capped cloud run is blocked. | Add input/output pricing metadata for the target/model or remove the max-cost cap. Add cache read/write pricing too when you want provider-reported prompt-cache tokens priced separately. BenchForge blocks capped runs when it cannot estimate cost. |
 | Results mention pricing assumptions. | Add cache read/write token prices for the affected target, then rerun or re-export before treating cost ranking as decisive. Without those prices, cache tokens are visibly priced with the normal input-token rate. |
 | Local target validation fails. | Confirm the server is running, the base URL ends in `/v1` when required, and the model name matches the runtime's model list. |
-| Readiness fails. | Open the summary path printed by `make benchmark-readiness`; detailed logs are under `benchforge-blueprint/.benchforge/readiness/`. |
+| Readiness fails. | Open the summary path printed by `make benchmark-readiness`; detailed logs are under `.benchforge/readiness/`. |
 
 ## Known Limits
 
@@ -448,13 +438,12 @@ The README is the operator entry point. Use the deeper docs when changing intern
 
 | Document | Use |
 | --- | --- |
-| [`benchforge-blueprint/README.md`](benchforge-blueprint/README.md) | Same app guide with paths relative to the implementation folder. |
-| [`benchforge-blueprint/docs/ARCHITECTURE.md`](benchforge-blueprint/docs/ARCHITECTURE.md) | Tauri, Rust backend, storage, worker, and adapter architecture. |
-| [`benchforge-blueprint/docs/DATA_MODEL.md`](benchforge-blueprint/docs/DATA_MODEL.md) | SQLite entities, run records, artifacts, jobs, and reproducibility data. |
-| [`benchforge-blueprint/docs/BENCHMARK_STRATEGY.md`](benchforge-blueprint/docs/BENCHMARK_STRATEGY.md) | Benchmark pack design, evidence grading, calibration, and scoring philosophy. |
-| [`benchforge-blueprint/docs/SECURITY_SANDBOX.md`](benchforge-blueprint/docs/SECURITY_SANDBOX.md) | Sandbox, redaction, worker, Docker, and artifact-sharing rules. |
-| [`benchforge-blueprint/docs/UI_UX_SPEC.md`](benchforge-blueprint/docs/UI_UX_SPEC.md) | Product flows and expected desktop app behavior. |
-| [`benchforge-blueprint/docs/ROADMAP.md`](benchforge-blueprint/docs/ROADMAP.md) | Current implementation status and remaining milestone work. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Tauri, Rust backend, storage, worker, and adapter architecture. |
+| [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) | SQLite entities, run records, artifacts, jobs, and reproducibility data. |
+| [`docs/BENCHMARK_STRATEGY.md`](docs/BENCHMARK_STRATEGY.md) | Benchmark pack design, evidence grading, calibration, and scoring philosophy. |
+| [`docs/SECURITY_SANDBOX.md`](docs/SECURITY_SANDBOX.md) | Sandbox, redaction, worker, Docker, and artifact-sharing rules. |
+| [`docs/UI_UX_SPEC.md`](docs/UI_UX_SPEC.md) | Product flows and expected desktop app behavior. |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Current implementation status and remaining milestone work. |
 
 ## Roadmap
 
@@ -466,11 +455,11 @@ Near-term priorities:
 - Harden worker imports and Docker/Colima sandboxing for code and agent benchmarks.
 - Improve clean-machine onboarding, packaging, and distribution signing.
 
-See [`benchforge-blueprint/docs/ROADMAP.md`](benchforge-blueprint/docs/ROADMAP.md) for the full milestone plan.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full milestone plan.
 
 ## Contributing
 
-Read [`AGENTS.md`](AGENTS.md), [`benchforge-blueprint/AGENTS.md`](benchforge-blueprint/AGENTS.md), and [`CONTRIBUTING.md`](CONTRIBUTING.md) before making changes. Keep changes scoped, preserve user data under `.benchforge/`, and include verification commands in every pull request. For UI changes, include screenshots or a short screen recording. For benchmark, runner, export, or security changes, run the relevant smoke target plus `make benchmark-readiness` when practical.
+Read [`AGENTS.md`](AGENTS.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) before making changes. Keep changes scoped, preserve user data under `.benchforge/`, and include verification commands in every pull request. For UI changes, include screenshots or a short screen recording. For benchmark, runner, export, or security changes, run the relevant smoke target plus `make benchmark-readiness` when practical.
 
 Security issues should be reported privately using [`SECURITY.md`](SECURITY.md). Project participation is covered by [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
