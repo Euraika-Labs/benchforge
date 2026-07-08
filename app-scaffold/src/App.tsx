@@ -3121,6 +3121,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
   const [packTasks, setPackTasks] = useState<BenchmarkPackTask[]>([]);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [pendingTaskIntent, setPendingTaskIntent] = useState<{ packId: string; taskIds: string[] } | null>(null);
+  const [taskSelectionOpen, setTaskSelectionOpen] = useState(false);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [taskError, setTaskError] = useState('');
   const [repetitions, setRepetitions] = useState('1');
@@ -3150,6 +3151,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
     : '';
   const selectedTaskCount = selectedTaskIds.length;
   const taskSelectionError = taskError || (tasksLoading ? 'Loading benchmark tasks...' : selectedPackId && !selectedTaskCount ? 'Select at least one benchmark task.' : '');
+  const taskSelectionNeedsAttention = Boolean(taskError || (!tasksLoading && selectedPackId && !selectedTaskCount));
   const directTargets = targets.filter(target => targetIsSelectableModel(target));
   const localTargetIds = directTargets.filter(target => isLocalModelTarget(target)).map(target => target.id);
   const cloudTargets = directTargets.filter(target => isCloudModelTarget(target));
@@ -3328,6 +3330,7 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
       setMessage(`Run Builder skipped requested task subset because none of those task IDs are in ${selectedPackId}`);
       return;
     }
+    setTaskSelectionOpen(true);
     setSelectedTaskIds(nextTaskIds);
     setMessage(`Run Builder selected ${nextTaskIds.length} task(s) from coverage follow-up`);
   }, [pendingTaskIntent, selectedPackId, tasksLoading, taskError, packTasks, setMessage]);
@@ -3639,17 +3642,22 @@ function Runs({ targets, packs, busy, setBusy, setMessage, refresh, setPage, ope
           </div>
         </details>
       </div>
-      <div className="subsection-head"><strong>Tasks</strong><div className="actions"><span className="mini-tag">{selectedTaskCount}/{packTasks.length || selectedPack?.tasks || 0} selected</span><button disabled={tasksLoading || !packTasks.length || selectedTaskCount === packTasks.length} onClick={selectAllTasks}><ClipboardCheck size={14} />All</button><button disabled={tasksLoading || !selectedTaskCount} onClick={clearTaskSelection}><Square size={14} />None</button></div></div>
-      {tasksLoading ? <p className="muted">Loading benchmark tasks...</p> : taskError ? <p className="muted">{taskError}</p> : <div className="checks task-checks">{packTasks.map(task => {
-        const checked = selectedTaskIds.includes(task.id);
-        return <label key={task.id} title={task.prompt}>
-          <input type="checkbox" checked={checked} onChange={event => setTaskSelected(task.id, event.target.checked)} />
-          <span>{task.name}</span>
-          <span className="mini-tag">{task.taskType}</span>
-          <span className="mini-tag">{task.timeoutSeconds}s</span>
-          {task.scoringMethods.slice(0, 2).map(method => <span className="mini-tag" key={`${task.id}-${method}`}>{method}</span>)}
-        </label>;
-      })}</div>}
+      <details className="advanced-section task-selection-section" open={taskSelectionOpen || taskSelectionNeedsAttention} onToggle={event => setTaskSelectionOpen(event.currentTarget.open)}>
+        <summary><ClipboardCheck size={14} />Tasks <span className="mini-tag">{selectedTaskCount}/{packTasks.length || selectedPack?.tasks || 0} selected</span></summary>
+        <div className="section-inner">
+          <div className="subsection-head"><strong>Task selection</strong><div className="actions"><button disabled={tasksLoading || !packTasks.length || selectedTaskCount === packTasks.length} onClick={selectAllTasks}><ClipboardCheck size={14} />All</button><button disabled={tasksLoading || !selectedTaskCount} onClick={clearTaskSelection}><Square size={14} />None</button></div></div>
+          {tasksLoading ? <p className="muted">Loading benchmark tasks...</p> : taskError ? <p className="muted">{taskError}</p> : <div className="checks task-checks">{packTasks.map(task => {
+            const checked = selectedTaskIds.includes(task.id);
+            return <label key={task.id} title={task.prompt}>
+              <input type="checkbox" checked={checked} onChange={event => setTaskSelected(task.id, event.target.checked)} />
+              <span>{task.name}</span>
+              <span className="mini-tag">{task.taskType}</span>
+              <span className="mini-tag">{task.timeoutSeconds}s</span>
+              {task.scoringMethods.slice(0, 2).map(method => <span className="mini-tag" key={`${task.id}-${method}`}>{method}</span>)}
+            </label>;
+          })}</div>}
+        </div>
+      </details>
       {selectedPack?.heavy ? <p className="muted">Selected pack is marked heavy and may take longer or require external tooling.</p> : null}
       {selectedPack ? <PackRunReadiness pack={selectedPack} docker={docker} /> : null}
       {comparisonRunReadiness ? <LocalCloudRunReadinessPanel readiness={comparisonRunReadiness} onSetCostCap={applyRecommendedCostCap} onRepairPricing={repairRunPricingBlockers} /> : null}

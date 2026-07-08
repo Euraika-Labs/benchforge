@@ -156,6 +156,7 @@ textarea { resize: vertical; }
 .advanced-section { grid-column: 1 / -1; border: 1px solid #e7e5e4; border-radius: 8px; background: #fafaf9; }
 .advanced-section summary { min-height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: #57534e; cursor: pointer; font-size: 13px; font-weight: 650; }
 .advanced-section .form-grid { margin: 0; padding: 0 10px 12px; }
+.advanced-section .section-inner { padding: 0 10px 12px; }
 .form-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .key-status { min-height: 36px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; color: #57534e; font-size: 13px; }
 .key-status button { min-width: 32px; padding: 0 8px; }

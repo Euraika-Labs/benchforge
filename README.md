@@ -176,7 +176,7 @@ Choose the fastest path for the thing you want to prove:
 1. Run `make doctor` and fix required tools before adding targets.
 2. Add at least one target: a local runtime such as Hugging Face GGUF, Ollama, LM Studio, or `llama.cpp`, or a cloud provider such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Gemini.
 3. Validate the target. Validation runs a tiny probe and stores the latest health result so full benchmark runs fail less mysteriously.
-4. Choose a benchmark pack and repetitions. Advanced run settings keep warmups, concurrency, Docker scoring, and paid-provider cost caps available when needed.
+4. Choose a benchmark pack and repetitions. All pack tasks are selected by default; expand Tasks only when you want a subset. Advanced run settings keep warmups, concurrency, Docker scoring, and paid-provider cost caps available when needed.
 5. Run the benchmark from the app. BenchForge stores runs in SQLite and writes artifacts under `.benchforge/runs/`.
 6. Compare targets on the Results page by pass rate, weighted score, latency, cost, throughput, model identity, coverage, and evidence grade.
 7. Export a report folder when you need a portable review package with CSV, JSONL, Analysis JSON, copied artifacts, and reproducibility metadata.
