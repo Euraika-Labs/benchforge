@@ -11272,6 +11272,7 @@ fn detected_local_runtime_target_config(
         "max_tokens": max_tokens,
         "timeout_seconds": timeout_seconds,
         "retry_count": retry_count,
+        "streaming": false,
         "input_price_usd_per_million_tokens": 0,
         "output_price_usd_per_million_tokens": 0
     })
@@ -12354,8 +12355,8 @@ pub fn run_cli_local_runtime_discovery_smoke() -> Result<serde_json::Value, Stri
     for result in &run_results {
         if result.status != "passed" || result.score != Some(1.0) {
             return Err(format!(
-                "local_runtime_smoke_failed: {} {} returned status {} score {:?}",
-                result.target_id, result.task_id, result.status, result.score
+                "local_runtime_smoke_failed: {} {} returned status {} score {:?} error {:?}",
+                result.target_id, result.task_id, result.status, result.score, result.error
             ));
         }
     }
@@ -20943,6 +20944,7 @@ mod tests {
             config.pointer("/runtime/model_count"),
             Some(&serde_json::json!(1))
         );
+        assert_eq!(config.get("streaming"), Some(&serde_json::json!(false)));
     }
 
     #[test]
