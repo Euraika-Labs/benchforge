@@ -563,6 +563,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const sandboxCheck = dashboardSandboxCheck(checks);
   const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
   const recommendedTargetIds = recommendedTargets.runTargetIds;
+  const allComparableTargetIds = recommendedTargets.allRunTargetIds;
   const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
   const comparisonReady = compareCheck.status === 'ok';
   const comparisonNeedsPricing = comparisonReady && Boolean(pricingRepairTargetIds.length) && recommendedTargetIds.length < 2;
@@ -571,6 +572,11 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const activeRunInProgress = runJobs.some(isJobActive);
   const primaryBenchmarkActionLabel = comparisonNeedsPricing ? 'Add cloud pricing' : comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
   const primaryBenchmarkActionDisabled = busy || (comparisonReady && !comparisonNeedsPricing && activeRunInProgress);
+  const primaryBenchmarkActionTitle = activeRunInProgress && comparisonReady
+    ? 'A benchmark job is already running'
+    : comparisonReady && !comparisonNeedsPricing && allComparableTargetIds.length > recommendedTargetIds.length
+      ? `Runs the recommended pair: ${previewList(recommendedTargetIds)}. Use Run Builder > Local + cloud for all ${allComparableTargetIds.length} comparable targets.`
+      : undefined;
   const reliabilityComparisonDisabled = busy || activeRunInProgress || !comparisonReady || comparisonNeedsPricing || !hasReliabilityPack;
   function openLocalRuntimeDetection() {
     openTargetSetup({ code: 'local_runtime_detect' });
@@ -593,7 +599,8 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         return;
       }
       const warningNote = validationResults.some(result => result.status !== 'ok') ? `; warnings: ${formatValidationCodeCounts(validationResults.filter(result => result.status !== 'ok'))}` : '';
-      setMessage(`Starting ${benchmarkPackLabel(benchmarkPackId)} local/cloud comparison with ${intent.targetIds.length} target(s), ${intent.repetitions} repetitions, ${intent.warmupRuns} warmup, ${formatCost(intent.maxCostUsd ?? defaultComparisonMaxCostUsd)} cap${warningNote}`);
+      const scopeNote = allComparableTargetIds.length > intent.targetIds.length ? 'recommended pair' : 'local/cloud comparison';
+      setMessage(`Starting ${benchmarkPackLabel(benchmarkPackId)} ${scopeNote} with ${intent.targetIds.length} target(s), ${intent.repetitions} repetitions, ${intent.warmupRuns} warmup, ${formatCost(intent.maxCostUsd ?? defaultComparisonMaxCostUsd)} cap${warningNote}`);
       const job = await startRunJob(
         intent.targetIds,
         false,
@@ -677,7 +684,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         <button onClick={openLocalRuntimeDetection}><Search size={14} />Detect runtime</button>
         <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
         <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
-        <button disabled={primaryBenchmarkActionDisabled} title={activeRunInProgress && comparisonReady ? 'A benchmark job is already running' : undefined} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
+        <button disabled={primaryBenchmarkActionDisabled} title={primaryBenchmarkActionTitle} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
         <button disabled={reliabilityComparisonDisabled} title={activeRunInProgress ? 'A benchmark job is already running' : undefined} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
         <button disabled={comparisonResultCheck.status !== 'ok'} onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
       </div>
@@ -1092,21 +1099,47 @@ function dashboardCheck(checks: DoctorCheck[], id: string, label: string, status
 
 interface DashboardLocalCloudComparisonTargets {
   runTargetIds: string[];
+  allRunTargetIds: string[];
   pricingRepairTargetIds: string[];
 }
 
 function dashboardLocalCloudComparisonTargets(targets: Target[]): DashboardLocalCloudComparisonTargets {
   const selectable = targets.filter(targetIsSelectableModel);
-  const localIds = selectable.filter(dashboardTargetLooksLocal).map(target => target.id);
+  const localTargets = selectable.filter(dashboardTargetLooksLocal).sort(compareDashboardComparisonTargetPriority);
+  const localIds = localTargets.map(target => target.id);
   const cloudTargets = selectable.filter(dashboardTargetLooksCloud);
-  const pricedCloudIds = cloudTargets.filter(targetHasInputOutputPricing).map(target => target.id);
+  const pricedCloudTargets = cloudTargets.filter(targetHasInputOutputPricing).sort(compareDashboardComparisonTargetPriority);
+  const pricedCloudIds = pricedCloudTargets.map(target => target.id);
   const pricingRepairTargetIds = localIds.length && !pricedCloudIds.length
     ? cloudTargets.map(target => target.id)
     : [];
+  const recommendedPairIds = localTargets.length && pricedCloudTargets.length
+    ? [localTargets[0].id, pricedCloudTargets[0].id]
+    : [];
   return {
-    runTargetIds: localIds.length && pricedCloudIds.length ? uniqueIdsInOrder([...localIds, ...pricedCloudIds]) : [],
+    runTargetIds: uniqueIdsInOrder(recommendedPairIds),
+    allRunTargetIds: localIds.length && pricedCloudIds.length ? uniqueIdsInOrder([...localIds, ...pricedCloudIds]) : [],
     pricingRepairTargetIds: uniqueIdsInOrder(pricingRepairTargetIds),
   };
+}
+
+function compareDashboardComparisonTargetPriority(left: Target, right: Target) {
+  return dashboardComparisonTargetReadinessRank(left) - dashboardComparisonTargetReadinessRank(right)
+    || left.name.localeCompare(right.name)
+    || left.id.localeCompare(right.id);
+}
+
+function dashboardComparisonTargetReadinessRank(target: Target) {
+  if (target.validationStatus === 'ok') {
+    return 0;
+  }
+  if (target.validationStatus === 'warn') {
+    return 1;
+  }
+  if (target.validationStatus) {
+    return 2;
+  }
+  return 3;
 }
 
 function uniqueIdsInOrder(values: string[]) {
