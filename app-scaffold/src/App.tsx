@@ -143,7 +143,7 @@ interface TargetRepairIntent {
 }
 
 interface TargetSetupIntent {
-  adapterId: string;
+  adapterId?: string;
   code: string;
   nonce: number;
 }
@@ -1330,7 +1330,20 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     if (!setupIntent) {
       return;
     }
+    if (setupIntent.code === 'local_runtime_detect') {
+      onSetupIntentConsumed();
+      clearTargetForm();
+      clearHarnessForm();
+      setMessage('Detecting local runtimes from Doctor');
+      void detectLocal().catch(error => setMessage(String(error)));
+      return;
+    }
     if (!runnableAdapters.length) {
+      return;
+    }
+    if (!setupIntent.adapterId) {
+      onSetupIntentConsumed();
+      setMessage('Choose a target setup path');
       return;
     }
     const adapter = runnableAdapters.find(item => item.id === setupIntent.adapterId);
@@ -4537,7 +4550,9 @@ function doctorAction(check: DoctorCheck, targets: Target[], actionBusy: string,
     }}><Settings size={14} />Key</button>;
   }
   if (check.id.startsWith('endpoint-')) {
-    return <button onClick={() => setPage('targets')}><Search size={14} />Detect</button>;
+    return <button onClick={() => {
+      openTargetSetup({ code: 'local_runtime_detect' });
+    }}><Search size={14} />Detect</button>;
   }
   if (check.id === 'benchmark-target-local') {
     const repair = check.detail.includes('last validation failed');
