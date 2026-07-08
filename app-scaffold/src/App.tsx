@@ -480,7 +480,7 @@ export default function App() {
           />
         );
       case 'doctor':
-        return <Doctor checks={checks} diagnostics={diagnostics} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} />;
+        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} />;
       case 'settings':
         return <SettingsPage busy={busy} targets={targets} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} />;
       default:
@@ -4147,13 +4147,23 @@ function Results({ results, targets, adapters, artifacts, selectedRunId, setSele
   </section>;
 }
 
-function Doctor({ checks, diagnostics, onRefresh, setBusy, setMessage, setPage }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void }) {
+function Doctor({ checks, diagnostics, targets, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void }) {
   const [actionBusy, setActionBusy] = useState('');
   const [actionLog, setActionLog] = useState('');
   const errors = checks.filter(c => c.status === 'error').length;
   const warnings = checks.filter(c => c.status === 'warn').length;
   const ok = checks.filter(c => c.status === 'ok').length;
   const installableLocalMissing = checks.some(check => isLocalModelToolCheck(check) && check.status !== 'ok');
+  const recommendedTargetIds = dashboardLocalCloudTargetIds(targets);
+  const recommendedPack = recommendedComparisonPackId(packs);
+  function openBenchmarkStep(check: DoctorCheck) {
+    if (check.command.startsWith('Runs > Local + cloud') && recommendedTargetIds.length >= 2) {
+      openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, recommendedPack));
+      setMessage(`Run Builder ready for local/cloud comparison: ${recommendedTargetIds.length} target(s), ${benchmarkPackLabel(recommendedPack)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
+      return;
+    }
+    setPage(nextBenchmarkStepPage(check));
+  }
   async function installLocalModelTools() {
     const installPython = checks.some(check => check.id === 'python3' && check.status !== 'ok');
     const installHf = checks.some(check => check.id === 'hf' && check.status !== 'ok');
@@ -4189,7 +4199,7 @@ function Doctor({ checks, diagnostics, onRefresh, setBusy, setMessage, setPage }
       <Card title="Ready" value={ok} note={`${checks.length} checks`} />
     </div>
     {actionLog ? <pre className="setup-log">{actionLog}</pre> : null}
-    <BenchmarkNextStepPanel checks={checks} setPage={setPage} />
+    <BenchmarkNextStepPanel checks={checks} openBenchmarkStep={openBenchmarkStep} />
     <DiagnosticsPanel diagnostics={diagnostics} />
     <table>
       <thead><tr><th>Category</th><th>Check</th><th>Need</th><th>Status</th><th>Detail</th><th>Fix</th><th>Action</th><th>Command</th></tr></thead>
@@ -4200,14 +4210,14 @@ function Doctor({ checks, diagnostics, onRefresh, setBusy, setMessage, setPage }
         <td><span className={`pill ${c.status}`}>{c.status}</span></td>
         <td>{c.detail}</td>
         <td className="doctor-remediation">{c.remediation || '-'}</td>
-        <td>{doctorAction(c, actionBusy, installLocalModelTools, setPage, setMessage)}</td>
+        <td>{doctorAction(c, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep)}</td>
         <td className="doctor-command">{c.command ? <div className="doctor-command-cell"><code>{c.command}</code><button title="Copy command or path" onClick={() => copyDoctorCommand(c).catch(error => setMessage(String(error)))}><Copy size={14} /></button></div> : '-'}</td>
       </tr>)}</tbody>
     </table>
   </section>;
 }
 
-function BenchmarkNextStepPanel({ checks, setPage }: { checks: DoctorCheck[]; setPage: (page: Page) => void }) {
+function BenchmarkNextStepPanel({ checks, openBenchmarkStep }: { checks: DoctorCheck[]; openBenchmarkStep: (check: DoctorCheck) => void }) {
   const nextStep = dashboardCheck(checks, 'benchmark-next-step', 'Next benchmark step', 'warn', 'Add one local model target and one cloud model target');
   const stepChecks = [
     dashboardCheck(checks, 'benchmark-target-local', 'Local', 'warn', 'Add local target'),
@@ -4223,7 +4233,7 @@ function BenchmarkNextStepPanel({ checks, setPage }: { checks: DoctorCheck[]; se
     <p>{nextStep.detail}</p>
     {nextStep.remediation ? <p>{nextStep.remediation}</p> : null}
     <div className="actions">
-      <button onClick={() => setPage(nextBenchmarkStepPage(nextStep))}>{nextBenchmarkStepIcon(nextStep)}{nextBenchmarkStepLabel(nextStep)}</button>
+      <button onClick={() => openBenchmarkStep(nextStep)}>{nextBenchmarkStepIcon(nextStep)}{nextBenchmarkStepLabel(nextStep)}</button>
     </div>
     <div className="next-step-track">
       {stepChecks.map(check => <span key={check.id} className={check.status}><strong>{check.label}</strong>{check.status}</span>)}
@@ -4289,7 +4299,7 @@ function isLocalModelToolCheck(check: DoctorCheck) {
   return check.id === 'python3' || check.id === 'hf' || check.id === 'llama-server';
 }
 
-function doctorAction(check: DoctorCheck, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void) {
+function doctorAction(check: DoctorCheck, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void) {
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
@@ -4309,13 +4319,13 @@ function doctorAction(check: DoctorCheck, actionBusy: string, installLocalModelT
     return <button onClick={() => setPage('targets')}><Settings size={14} />Cloud</button>;
   }
   if (check.id === 'benchmark-local-cloud-compare') {
-    return <button onClick={() => setPage('runs')}><Play size={14} />Runs</button>;
+    return <button onClick={() => openBenchmarkStep(check)}><Play size={14} />Runs</button>;
   }
   if (check.id === 'benchmark-local-cloud-evidence') {
-    return <button onClick={() => setPage(check.status === 'ok' ? 'results' : 'runs')}><ClipboardCheck size={14} />{check.status === 'ok' ? 'Results' : 'Runs'}</button>;
+    return <button onClick={() => check.status === 'ok' ? setPage('results') : openBenchmarkStep(check)}><ClipboardCheck size={14} />{check.status === 'ok' ? 'Results' : 'Runs'}</button>;
   }
   if (check.id === 'benchmark-next-step') {
-    return <button onClick={() => setPage(nextBenchmarkStepPage(check))}>{nextBenchmarkStepIcon(check)}{nextBenchmarkStepLabel(check)}</button>;
+    return <button onClick={() => openBenchmarkStep(check)}>{nextBenchmarkStepIcon(check)}{nextBenchmarkStepLabel(check)}</button>;
   }
   if (check.id === 'benchmark-packs' || check.id === 'benchmark-pack-diagnostics') {
     return <button onClick={() => setPage('benchmarks')}><FlaskConical size={14} />Packs</button>;
