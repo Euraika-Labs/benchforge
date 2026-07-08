@@ -1,0 +1,35 @@
+id: llm-structured-numeric-unit-conversion-001
+name: Numeric unit conversion
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Convert the usage summary:
+  - prompt tokens: 128,000
+  - completion tokens: 32,500
+  - input price: $0.20 per 1M tokens
+  - output price: $0.80 per 1M tokens
+  - total wall time: 52.4 seconds
+
+  Required fields:
+  - prompt_mtokens
+  - completion_mtokens
+  - total_cost_usd
+  - tokens_per_second
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_number_close:
+    prompt_mtokens:
+      expected: 0.128
+      tolerance: 0.000001
+    completion_mtokens:
+      expected: 0.0325
+      tolerance: 0.000001
+    total_cost_usd:
+      expected: 0.0516
+      tolerance: 0.00001
+    tokens_per_second:
+      expected: 3062.9771
+      tolerance: 0.01

@@ -1,0 +1,55 @@
+id: llm-reliability-served-model-identity-001
+name: Served model identity discipline
+version: 0.1.0
+type: prompt
+weight: 1.5
+prompt: |
+  Return only compact JSON.
+
+  A teammate wants to recommend a winner from this local/cloud benchmark report.
+
+  Visible result scope:
+  - target_id: local-qwen
+    configured_model: qwen2.5-7b-instruct-q4_k_m.gguf
+    provider_model: qwen2.5-7b-instruct-q4_k_m.gguf
+    provider_model_source: target_config
+    pass_rate: 0.96
+  - target_id: cloud-router
+    configured_model: provider/fast-chat
+    provider_model: provider/fallback-chat
+    provider_model_source: provider
+    pass_rate: 0.98
+  - target_id: cloud-large
+    configured_model: provider/large-chat
+    provider_model: provider/large-chat
+    provider_model_source: provider
+    pass_rate: 0.97
+
+  Benchmark policy:
+  - A model-selection recommendation requires each compared target to have a provider-confirmed served model id.
+  - Values copied from target config are provisional identity only.
+  - If the served provider model differs from the configured model, fix or revalidate the target and rerun the same pack.
+  - Do not declare a winner from display names or intended configured model names.
+
+  Required fields: decision, recommendation_allowed, blocked_target_ids, identity_risks, next_action, report_note.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    decision: block_model_selection
+    recommendation_allowed: false
+    next_action: revalidate_targets_and_rerun_same_pack
+  json_field_array_exact:
+    blocked_target_ids:
+      - local-qwen
+      - cloud-router
+    identity_risks:
+      - configured_fallback_identity
+      - served_model_mismatch
+  json_field_contains:
+    report_note:
+      - provider-confirmed served model id
+  expect_not_contains:
+    - "cloud-router is best"
+    - "local-qwen is best"
+    - "winner"

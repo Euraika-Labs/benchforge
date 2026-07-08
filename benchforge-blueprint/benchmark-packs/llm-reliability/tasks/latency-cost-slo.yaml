@@ -1,0 +1,49 @@
+id: llm-reliability-latency-cost-slo-001
+name: Latency and cost SLO gating
+version: 0.1.0
+type: prompt
+weight: 1.25
+prompt: |
+  Return only compact JSON.
+
+  Select the model for a support automation workflow.
+
+  Policy:
+  - Eligible models must have pass_rate >= 0.94.
+  - Eligible models must have p95_latency_ms <= 900.
+  - Eligible models must have cost_usd_per_1k_tickets <= 1.50.
+  - Among eligible models, choose the lowest cost.
+
+  Measured targets:
+  - local-mlx: pass_rate 0.93, p95_latency_ms 520, cost_usd_per_1k_tickets 0.00
+  - local-qwen: pass_rate 0.95, p95_latency_ms 1120, cost_usd_per_1k_tickets 0.00
+  - cloud-mini: pass_rate 0.95, p95_latency_ms 760, cost_usd_per_1k_tickets 1.20
+  - cloud-large: pass_rate 0.98, p95_latency_ms 1240, cost_usd_per_1k_tickets 4.80
+
+  Required fields: eligible_model_ids, rejected_model_ids, selected_model_id, rejection_reasons, reason.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    selected_model_id: cloud-mini
+  json_field_array_exact:
+    eligible_model_ids:
+      - cloud-mini
+    rejected_model_ids:
+      - local-mlx
+      - local-qwen
+      - cloud-large
+  json_field_contains:
+    rejection_reasons.local-mlx:
+      - pass_rate
+    rejection_reasons.local-qwen:
+      - p95_latency_ms
+    rejection_reasons.cloud-large:
+      - p95_latency_ms
+      - cost_usd_per_1k_tickets
+    reason:
+      - lowest cost
+      - eligible
+  expect_not_contains:
+    - "local-qwen is best"
+    - "cloud-large is best"

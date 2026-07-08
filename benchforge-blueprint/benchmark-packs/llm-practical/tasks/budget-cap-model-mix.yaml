@@ -1,0 +1,48 @@
+id: llm-practical-budget-cap-model-mix-001
+name: Budget-capped model mix
+version: 0.1.0
+type: prompt
+weight: 1.25
+prompt: |
+  Return only compact JSON.
+
+  Pick a monthly model routing mix for 100,000 support requests.
+
+  Traffic:
+  - 75% simple classification requests
+  - 25% critical payment-risk extraction requests
+
+  Candidate routes:
+  - local-qwen-14b: allowed for simple classification, cost_per_call_usd 0.0000, pass_rate 0.92
+  - cloud-mini: allowed for simple and critical requests, cost_per_call_usd 0.0020, pass_rate 0.96
+  - cloud-large: allowed for critical requests, cost_per_call_usd 0.0180, pass_rate 0.985
+
+  Constraints:
+  - monthly budget must be <= 80 USD
+  - simple classification needs pass_rate >= 0.90
+  - critical extraction needs pass_rate >= 0.95
+  - minimize cost after constraints pass
+
+  Required fields: simple_route, critical_route, monthly_cost_usd, meets_budget, reason_codes.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    simple_route: local-qwen-14b
+    critical_route: cloud-mini
+    meets_budget: true
+  json_field_number_close:
+    monthly_cost_usd:
+      expected: 50
+      tolerance: 0.01
+  json_field_number_bounds:
+    monthly_cost_usd:
+      min: 0
+      max: 80
+  json_field_contains:
+    reason_codes:
+      - budget
+      - pass_rate
+      - cost
+  expect_not_contains:
+    - "cloud-large"

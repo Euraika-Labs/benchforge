@@ -1,0 +1,10 @@
+id: llm-connectivity
+name: LLM Connectivity
+version: 0.1.0
+description: Minimal prompt checks that verify a local or cloud model endpoint responds and BenchForge records latency, artifacts, and provider metadata. Use before quality benchmarks.
+tags: [prompt, llm, smoke, connectivity, local, cloud]
+estimated_runtime: <1 minute
+requires_sandbox: false
+tasks:
+  - tasks/nonempty-response.yaml
+  - tasks/short-completion.yaml

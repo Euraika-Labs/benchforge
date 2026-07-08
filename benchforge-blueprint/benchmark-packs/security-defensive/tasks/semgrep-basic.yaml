@@ -1,0 +1,11 @@
+id: semgrep-basic
+type: benchmark_harness
+name: Semgrep generated patch scan
+version: external
+language: multi
+fixture: ../../../fixtures/security-defensive-basic
+prompt: "Run Semgrep security checks on generated patch."
+timeout_seconds: 1800
+scoring:
+  command: ["benchforge-worker", "run", "--kind", "security", "--tool", "semgrep"]
+  parse: worker-jsonl

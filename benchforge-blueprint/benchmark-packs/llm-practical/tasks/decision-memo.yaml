@@ -1,0 +1,20 @@
+id: llm-practical-decision-memo-001
+name: Concise decision memo
+version: 0.1.0
+type: prompt
+prompt: |
+  Write exactly three bullet lines. Do not use markdown headings.
+
+  Context:
+  Model A is cheaper and has 92% pass rate, 780 ms p95 latency, and weak JSON reliability.
+  Model B costs 2x more and has 97% pass rate, 1040 ms p95 latency, and strong JSON reliability.
+  The workload is customer-support automation where malformed JSON breaks downstream tools.
+timeout_seconds: 120
+scoring:
+  expect_contains:
+    - Model B
+    - JSON
+    - support
+  expect_not_contains:
+    - "#"
+    - Model C

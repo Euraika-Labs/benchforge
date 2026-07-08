@@ -1,0 +1,40 @@
+id: llm-reliability-sample-size-caution-001
+name: Sample-size caution
+version: 0.1.0
+type: prompt
+weight: 1.5
+prompt: |
+  Return only compact JSON.
+
+  A teammate wants to declare a winner from this local/cloud benchmark snapshot.
+
+  Visible result scope:
+  - atlas-local covered tasks A, B, C with 3 repetitions per task. Overall pass_rate 0.89.
+  - boreal-cloud covered tasks A, B only with 1 repetition per task. Overall pass_rate 1.00.
+  - cygnus-cloud covered tasks A, B only with 1 repetition per task. Overall pass_rate 1.00.
+
+  Benchmark policy:
+  - Do not select a winner when targets did not run the same task set.
+  - Do not select a winner when any candidate has fewer than 3 repetitions per task.
+  - Single-sample pass rates are setup smoke evidence, not model-selection evidence.
+
+  Required fields: decision, selected_model_id, evidence_risks, minimum_next_run.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    decision: collect_more_evidence
+    selected_model_id: null
+  json_field_array_exact:
+    evidence_risks:
+      - coverage_gap
+      - low_repetitions
+      - single_sample_pass_rates
+  json_field_contains:
+    minimum_next_run:
+      - same task set
+      - 3 repetitions
+  expect_not_contains:
+    - "boreal-cloud is best"
+    - "cygnus-cloud is best"
+    - "winner"

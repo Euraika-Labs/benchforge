@@ -1,0 +1,19 @@
+id: llm-practical-strict-format-001
+name: Strict format response
+version: 0.1.0
+type: prompt
+prompt: |
+  Reply with exactly one line using this format:
+  Recommendation: <model>; Reason: <five words or fewer>
+
+  Scenario:
+  Model A is cheaper but fails JSON validation. Model B is slightly slower but always returns valid JSON. The workload feeds an automated parser.
+timeout_seconds: 120
+scoring:
+  expect_regex:
+    - "^Recommendation: Model B; Reason: [A-Za-z ]{1,40}$"
+  expect_contains:
+    - valid JSON
+  expect_not_contains:
+    - "```"
+    - "\n\n"

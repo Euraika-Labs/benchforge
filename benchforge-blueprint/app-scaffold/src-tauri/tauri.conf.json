@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "BenchForge",
+  "version": "0.1.0",
+  "identifier": "com.benchforge.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "BenchForge",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 980,
+        "minHeight": 640
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/icon.png"
+    ],
+    "resources": {
+      "../../adapters": "adapters",
+      "../../benchmark-packs": "benchmark-packs",
+      "../../docker": "docker",
+      "../../fixtures": "fixtures",
+      "../../workers/benchforge-worker": "workers/benchforge-worker",
+      "../../workers/benchforge_worker/__init__.py": "workers/benchforge_worker/__init__.py",
+      "../../workers/benchforge_worker/aider_runner.py": "workers/benchforge_worker/aider_runner.py",
+      "../../workers/benchforge_worker/cli.py": "workers/benchforge_worker/cli.py",
+      "../../workers/benchforge_worker/evalplus_runner.py": "workers/benchforge_worker/evalplus_runner.py",
+      "../../workers/benchforge_worker/harness_runner.py": "workers/benchforge_worker/harness_runner.py",
+      "../../workers/benchforge_worker/schemas.py": "workers/benchforge_worker/schemas.py",
+      "../../workers/benchforge_worker/scoring.py": "workers/benchforge_worker/scoring.py",
+      "../../workers/benchforge_worker/security_runner.py": "workers/benchforge_worker/security_runner.py",
+      "../../workers/benchforge_worker/swebench_runner.py": "workers/benchforge_worker/swebench_runner.py",
+      "../../workers/benchforge_worker/terminal_bench_runner.py": "workers/benchforge_worker/terminal_bench_runner.py"
+    },
+    "macOS": {
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "13.0"
+    }
+  }
+}

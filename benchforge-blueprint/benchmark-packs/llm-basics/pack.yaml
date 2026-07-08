@@ -1,0 +1,25 @@
+id: llm-basics
+name: LLM Basics
+version: 0.1.0
+description: Fast prompt-only checks for comparing local and cloud language models without a repo fixture.
+tags: [prompt, llm, fast]
+estimated_runtime: 1-3 minutes
+requires_sandbox: false
+calibration:
+  status: pilot
+  sample_size: 0
+  last_reviewed: "2026-07-08"
+  review_scope: contract_review
+  quality_gates:
+    - local_cloud_baseline_pair
+    - provider_confirmed_model_identity
+    - complete_pack_task_coverage
+    - min_3_repetitions_per_task_target
+    - cost_metrics_for_cloud_targets
+    - single_generation_policy
+    - review_before_public_leaderboard
+  notes: Reviewed judge-free prompt contracts for first-pass local/cloud comparison; not empirically calibrated against public baselines.
+tasks:
+  - tasks/instruction-following.yaml
+  - tasks/json-validity.yaml
+  - tasks/summarization.yaml

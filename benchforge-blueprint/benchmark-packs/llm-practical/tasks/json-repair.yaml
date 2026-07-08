@@ -1,0 +1,22 @@
+id: llm-practical-json-repair-001
+name: JSON repair
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only valid compact JSON.
+
+  Repair this record without inventing values:
+  customer='Acme West'; seats=42; plan='enterprise'; renewal='2026-09-30'; status='at risk'
+
+  Required fields: customer, seats, plan, renewal_date, status.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    customer: Acme West
+    seats: 42
+    plan: enterprise
+    renewal_date: "2026-09-30"
+    status: at risk
+  expect_not_contains:
+    - "null"

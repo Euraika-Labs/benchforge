@@ -1,0 +1,30 @@
+id: mistral-vibe-cli
+name: Mistral Vibe CLI
+kind: cli_agent
+adapter_version: 1
+schema_version: 1
+command: vibe
+args:
+  - --prompt
+  - "{{prompt}}"
+  - --max-turns
+  - "{{max_turns}}"
+  - --output
+  - json
+working_dir: "{{workspace}}"
+timeout_seconds: 900
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: true
+  shell_execution: true
+  repo_agent: true
+security:
+  sandbox_required: true
+validation:
+  command_args:
+    - --version
+metadata:
+  docs: https://docs.mistral.ai/vibe/code/cli/work-with-cli

@@ -1,0 +1,10 @@
+id: evalplus-mbpp-plus
+type: benchmark_harness
+name: MBPP+
+version: external
+language: python
+prompt: "Run MBPP+ through the EvalPlus worker."
+timeout_seconds: 7200
+scoring:
+  command: ["benchforge-worker", "run", "--kind", "evalplus", "--dataset", "mbpp"]
+  parse: evalplus

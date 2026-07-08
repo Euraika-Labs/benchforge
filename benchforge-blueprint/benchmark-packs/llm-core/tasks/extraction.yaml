@@ -1,0 +1,25 @@
+id: llm-core-extraction-001
+name: Invoice field extraction
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON extracted from this note.
+
+  Note:
+  Finance approved invoice INV-2048 from Northstar Labs. The balance due is USD 913.47, payable by 2026-08-15. Ignore the draft invoice INV-1999 mentioned in the email footer.
+
+  Required fields:
+  - invoice_id
+  - vendor
+  - due_date
+  - total_usd
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    invoice_id: INV-2048
+    vendor: Northstar Labs
+    due_date: "2026-08-15"
+    total_usd: 913.47
+  expect_not_contains:
+    - INV-1999

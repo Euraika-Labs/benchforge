@@ -1,0 +1,31 @@
+id: llm-practical-pii-redaction-001
+name: PII redaction
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Redact private contact and identity data from this note:
+  "Call Maya Chen at maya.chen@example.com or +1-415-555-0199. Her SSN is 078-05-1120. Account acct_17 needs SSO."
+
+  Required fields:
+  - redacted_note
+  - pii_types
+  - preserved_account_id
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    preserved_account_id: acct_17
+  json_field_contains:
+    redacted_note:
+      - acct_17
+  json_field_array_exact:
+    pii_types:
+      - email
+      - phone
+      - ssn
+  expect_not_contains:
+    - maya.chen@example.com
+    - "415-555-0199"
+    - "078-05-1120"

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BenchForge Normalized Result",
+  "type": "object",
+  "required": [
+    "run_id",
+    "target_id",
+    "task_id",
+    "status",
+    "metrics"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "target_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "tests": {
+      "type": "object"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "safety": {
+      "type": "object"
+    },
+    "reproducibility": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

@@ -4,10 +4,14 @@ Describe the change and why it is needed.
 
 ## Verification
 
-- [ ] I ran relevant tests or checks.
-- [ ] I updated documentation where needed.
-- [ ] I did not include secrets or sensitive data.
+- [ ] `make test`
+- [ ] Relevant smoke/readiness command:
 
-## Notes
+## Risk Notes
 
-Add screenshots, follow-up work, or reviewer context here.
+- Secrets, credentials, downloaded models, and `.benchforge/` data are not included.
+- Benchmark, scoring, provider, or export behavior changes are described.
+
+## UI Evidence
+
+Add screenshots or a short recording for visible UI changes.

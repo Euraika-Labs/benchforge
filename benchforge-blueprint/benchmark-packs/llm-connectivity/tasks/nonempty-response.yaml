@@ -1,0 +1,8 @@
+id: llm-connectivity-nonempty-001
+name: Non-empty response
+version: 0.1.0
+type: prompt
+prompt: |
+  Reply with a short acknowledgement that you are ready.
+timeout_seconds: 60
+scoring: {}

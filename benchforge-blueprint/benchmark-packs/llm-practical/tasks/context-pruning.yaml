@@ -1,0 +1,40 @@
+id: llm-practical-context-pruning-001
+name: Context pruning for model comparison
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Choose evidence snippets to keep for a 3-snippet prompt budget. The benchmark question is:
+  "Which target should handle renewal-risk extraction next week?"
+
+  Evidence:
+  [E1] The homepage redesign improved anonymous visitor conversion.
+  [E2] local-qwen pass_rate 0.92, p95_latency_ms 780, cost_per_1k_calls 0.00.
+  [E3] A staff lunch order includes vegetarian sandwiches.
+  [E4] openrouter-small pass_rate 0.90, p95_latency_ms 360, cost_per_1k_calls 0.18.
+  [E5] openai-mini pass_rate 0.96, p95_latency_ms 640, cost_per_1k_calls 0.42.
+  [E6] Renewal-risk extraction policy requires pass_rate >= 0.95 and p95_latency_ms < 900.
+
+  Required fields: keep_ids, drop_ids, selected_target, rationale.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    selected_target: openai-mini
+  json_field_array_exact:
+    keep_ids:
+      - E2
+      - E5
+      - E6
+    drop_ids:
+      - E1
+      - E3
+      - E4
+  json_field_contains:
+    rationale:
+      - pass_rate
+      - latency
+  expect_not_contains:
+    - "homepage"
+    - "sandwich"

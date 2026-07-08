@@ -1,0 +1,8 @@
+services:
+  benchforge-runner:
+    build:
+      context: .
+      dockerfile: runner.Dockerfile
+    network_mode: none
+    volumes:
+      - ../:/benchforge:ro

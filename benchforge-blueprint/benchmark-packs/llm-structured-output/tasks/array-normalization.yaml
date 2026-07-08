@@ -1,0 +1,31 @@
+id: llm-structured-array-normalization-001
+name: Array normalization
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Normalize this change-log into an array of impacted products sorted alphabetically, with duplicates removed:
+  - Billing API latency increased for EU tenants.
+  - Checkout API failed for paid workspaces.
+  - Billing API retry errors also increased.
+  - Workspace export was unaffected.
+
+  Required fields:
+  - impacted_products
+  - unaffected_products
+  - duplicate_count_removed
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_array_exact_ordered:
+    impacted_products:
+      - Billing API
+      - Checkout API
+  json_field_array_exact:
+    unaffected_products:
+      - Workspace export
+  json_field_equals:
+    duplicate_count_removed: 1
+  expect_not_contains:
+    - "Billing API, Billing API"

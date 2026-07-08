@@ -1,0 +1,8 @@
+id: llm-connectivity-short-completion-001
+name: Short completion
+version: 0.1.0
+type: prompt
+prompt: |
+  In one short sentence, describe what a benchmark run measures.
+timeout_seconds: 60
+scoring: {}

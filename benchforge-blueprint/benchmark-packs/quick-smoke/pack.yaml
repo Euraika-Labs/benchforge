@@ -1,0 +1,10 @@
+id: quick-smoke
+name: Quick Smoke Benchmarks
+version: 0.1.0
+description: Small repo-patch tasks used to verify the runner, adapters, scoring and UI.
+tags: [smoke, repo_patch, fast]
+estimated_runtime: 1-5 minutes
+requires_sandbox: true
+tasks:
+  - tasks/python-rate-limit.yaml
+  - tasks/js-sanitize-filename.yaml

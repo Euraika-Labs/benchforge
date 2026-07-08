@@ -1,0 +1,10 @@
+id: cloud-provider-contract-001
+name: Provider contract reply
+version: 0.1.0
+type: prompt
+prompt: |
+  Reply with exactly:
+  benchforge-cloud-ok
+timeout_seconds: 30
+scoring:
+  expect_exact: benchforge-cloud-ok

@@ -1,0 +1,10 @@
+id: terminal-bench-subset
+type: benchmark_harness
+name: Terminal-Bench subset
+version: external
+language: multi
+prompt: "Run selected Terminal-Bench tasks through the worker."
+timeout_seconds: 14400
+scoring:
+  command: ["benchforge-worker", "run", "--kind", "terminal-bench", "--subset", "small"]
+  parse: terminal-bench

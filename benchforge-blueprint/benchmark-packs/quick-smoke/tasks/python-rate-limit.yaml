@@ -1,0 +1,21 @@
+id: python-rate-limit-001
+name: Add login rate limiting
+version: 0.1.0
+type: repo_patch
+language: python
+fixture: ../../../fixtures/python-rate-limit
+prompt: |
+  The login endpoint currently accepts unlimited login attempts from the same IP address.
+  Implement a simple in-memory per-IP rate limiter.
+
+  Requirements:
+  - allow at most 3 failed login attempts per IP address;
+  - after the limit is hit, return HTTP 429;
+  - successful login should reset the failure counter for that IP;
+  - keep the existing public function names.
+
+timeout_seconds: 600
+max_turns: 8
+scoring:
+  command: ["python", "-m", "pytest", "-q"]
+  parse: pytest

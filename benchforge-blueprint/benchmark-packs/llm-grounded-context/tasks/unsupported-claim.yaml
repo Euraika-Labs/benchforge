@@ -1,0 +1,40 @@
+id: llm-grounded-unsupported-claim-001
+name: Refuse unsupported claim
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Use only the supplied context. If the answer is not supported, say so.
+
+  Context:
+  [C1] Model Atlas completed 80 prompt tasks with 92% pass rate.
+  [C2] Model Boreal completed 80 prompt tasks with 90% pass rate.
+  [C3] Atlas p95 latency was 840 ms. Boreal p95 latency was 510 ms.
+  [C4] No production incident-rate data is available for either model.
+
+  User claim to verify: "Atlas is safer in production because it has fewer incidents."
+
+  Required fields:
+  - supported
+  - verdict
+  - missing_evidence
+  - safe_answer
+  - evidence_ids
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    supported: false
+    verdict: insufficient_evidence
+  json_field_array_exact:
+    missing_evidence:
+      - production incident-rate data
+    evidence_ids:
+      - C4
+  json_field_contains:
+    safe_answer:
+      - "not supported"
+  expect_not_contains:
+    - "Atlas is safer"
+    - "fewer incidents"

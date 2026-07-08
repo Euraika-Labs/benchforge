@@ -1,0 +1,35 @@
+id: llm-structured-schema-extraction-001
+name: Strict schema extraction
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Extract a customer escalation record from this note:
+  "Enterprise account Helios Bank reported checkout failures for paid workspaces after deploy 2026.07.07. Severity is P1. Owner team is payments. Customer impact started at 14:20 UTC."
+
+  Required fields:
+  - account_name
+  - incident_type
+  - severity
+  - owner_team
+  - impact_start_utc
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    account_name: Helios Bank
+    incident_type: checkout_failure
+    severity: P1
+    owner_team: payments
+    impact_start_utc: "14:20"
+  json_field_object_keys_exact:
+    "$":
+      - account_name
+      - incident_type
+      - severity
+      - owner_team
+      - impact_start_utc
+  expect_not_contains:
+    - "```"
+    - unknown

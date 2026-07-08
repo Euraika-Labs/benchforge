@@ -1,0 +1,23 @@
+id: llm-practical-cost-math-001
+name: Token cost math
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON with this exact shape:
+  {"input_cost":number,"output_cost":number,"total_cost":number}
+
+  Input tokens: 125000 at $0.15 per 1M tokens.
+  Output tokens: 42000 at $0.60 per 1M tokens.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_number_close:
+    input_cost:
+      expected: 0.01875
+      tolerance: 0.00001
+    output_cost:
+      expected: 0.0252
+      tolerance: 0.00001
+    total_cost:
+      expected: 0.04395
+      tolerance: 0.00001

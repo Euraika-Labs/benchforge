@@ -1,0 +1,33 @@
+id: llm-practical-model-tradeoff-001
+name: Model tradeoff selection
+version: 0.1.0
+type: prompt
+weight: 1.5
+prompt: |
+  Return only compact JSON.
+
+  Choose one model for a production JSON extraction workload.
+
+  Candidates:
+  - model_id: local-qwen-14b; pass_rate: 0.94; json_validity: 0.99; p95_latency_ms: 820; cost_per_1k_calls: 0.00
+  - model_id: cloud-fast-8b; pass_rate: 0.91; json_validity: 0.92; p95_latency_ms: 410; cost_per_1k_calls: 0.18
+  - model_id: cloud-accurate-70b; pass_rate: 0.97; json_validity: 0.98; p95_latency_ms: 1650; cost_per_1k_calls: 1.60
+
+  Constraints:
+  - p95 latency must be below 1000 ms.
+  - JSON validity must be at least 0.98.
+  - Prefer zero marginal cost when constraints are met.
+
+  Required fields: selected_model_id, reasons.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    selected_model_id: local-qwen-14b
+  json_field_contains:
+    reasons:
+      - latency
+      - JSON
+      - cost
+  expect_not_contains:
+    - cloud-accurate-70b is selected

@@ -1,0 +1,11 @@
+id: dependency-basic
+type: benchmark_harness
+name: Dependency vulnerability audit
+version: external
+language: multi
+fixture: ../../../fixtures/security-defensive-basic
+prompt: "Run dependency vulnerability checks on generated project manifests."
+timeout_seconds: 1800
+scoring:
+  command: ["benchforge-worker", "run", "--kind", "security", "--tool", "dependency"]
+  parse: worker-jsonl

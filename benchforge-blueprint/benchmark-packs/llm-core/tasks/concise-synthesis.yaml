@@ -1,0 +1,17 @@
+id: llm-core-synthesis-001
+name: Concise synthesis
+version: 0.1.0
+type: prompt
+prompt: |
+  Summarize the following in one sentence of 20 words or fewer.
+
+  BenchForge runs the same benchmark packs against local runtimes and cloud APIs, records artifacts and reproducibility metadata, and compares pass rate, latency, throughput, tokens, and cost.
+timeout_seconds: 120
+scoring:
+  expect_contains:
+    - local
+    - cloud
+    - throughput
+  expect_not_contains:
+    - First,
+    - In conclusion

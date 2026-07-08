@@ -1,0 +1,20 @@
+id: vllm-openai
+name: vLLM OpenAI-compatible server
+kind: openai_compatible
+adapter_version: 1
+schema_version: 1
+default_base_url: http://localhost:8000/v1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+security:
+  network_required: local_or_remote
+validation:
+  endpoint: /models
+metadata:
+  docs: https://docs.vllm.ai/

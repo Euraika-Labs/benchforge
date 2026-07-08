@@ -1,0 +1,9 @@
+id: local-cloud-compare-ok-001
+name: Shared local cloud response
+version: 0.1.0
+type: prompt
+prompt: |
+  Reply with exactly: OK
+timeout_seconds: 60
+scoring:
+  expect_exact: OK

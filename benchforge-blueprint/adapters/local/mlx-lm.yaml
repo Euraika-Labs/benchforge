@@ -1,0 +1,21 @@
+id: mlx-lm
+name: MLX / mlx-lm local runtime
+kind: openai_compatible
+adapter_version: 1
+schema_version: 1
+default_base_url: http://localhost:8080/v1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: false
+  json_mode: false
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+security:
+  network_required: local
+validation:
+  endpoint: /models
+metadata:
+  docs: https://opensource.apple.com/projects/mlx
+  note: Configure base_url to match the server wrapper actually used for MLX.

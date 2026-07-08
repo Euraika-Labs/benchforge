@@ -1,0 +1,40 @@
+id: llm-grounded-needle-citation-001
+name: Needle with citation
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Use only the supplied context. Answer the question and cite source IDs.
+
+  Context:
+  [S-01] Helios Bank uses the checkout API for paid workspace subscriptions.
+  [S-02] The export service timeout threshold is 30 seconds.
+  [S-03] On 2026-07-07, the checkout API incident started at 14:20 UTC after deploy 2026.07.07.
+  [S-04] A marketing test increased homepage image size.
+  [S-05] Workspace export was unaffected by the checkout API incident.
+
+  Question: When did the Helios Bank checkout incident start, and what deploy was associated with it?
+
+  Required fields:
+  - answer
+  - incident_start_utc
+  - deploy_id
+  - evidence_ids
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    incident_start_utc: "14:20"
+    deploy_id: "2026.07.07"
+  json_field_contains:
+    answer:
+      - "14:20"
+      - "2026.07.07"
+  json_field_array_exact:
+    evidence_ids:
+      - S-03
+  expect_not_contains:
+    - "S-02"
+    - "homepage"
+    - "unknown"

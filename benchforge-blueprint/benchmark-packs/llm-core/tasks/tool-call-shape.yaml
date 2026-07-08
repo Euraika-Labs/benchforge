@@ -1,0 +1,29 @@
+id: llm-core-tool-call-001
+name: Tool call JSON shape
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON representing the tool call.
+
+  User request:
+  "Create a calendar event titled Benchmark review on 2026-07-10 at 09:30 UTC for 30 minutes."
+
+  Required JSON fields:
+  - tool
+  - arguments.title
+  - arguments.date
+  - arguments.time
+  - arguments.duration_minutes
+  - arguments.timezone
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    tool: create_calendar_event
+    arguments.title: Benchmark review
+    arguments.date: "2026-07-10"
+    arguments.time: "09:30"
+    arguments.duration_minutes: 30
+    arguments.timezone: UTC
+  expect_not_contains:
+    - markdown

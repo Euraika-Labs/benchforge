@@ -1,0 +1,32 @@
+id: llm-decision-suite
+name: LLM Decision Suite
+version: 0.1.0
+description: Broader judge-free prompt checks for comparing local and cloud models on operational decision work.
+tags: [prompt, llm, decision, comparison, operations]
+estimated_runtime: 10-25 minutes
+requires_sandbox: false
+calibration:
+  status: pilot
+  sample_size: 0
+  last_reviewed: "2026-07-08"
+  review_scope: contract_review
+  quality_gates:
+    - local_cloud_baseline_pair
+    - provider_confirmed_model_identity
+    - complete_pack_task_coverage
+    - min_3_repetitions_per_task_target
+    - cost_metrics_for_cloud_targets
+    - single_generation_policy
+    - review_before_public_leaderboard
+  notes: Reviewed operational decision contracts for first-pass local/cloud comparison; not empirically calibrated against public baselines.
+tasks:
+  - tasks/model-ranking.yaml
+  - tasks/weighted-score.yaml
+  - tasks/abstain-missing-evidence.yaml
+  - tasks/multilingual-extraction.yaml
+  - tasks/instruction-conflict.yaml
+  - tasks/error-taxonomy.yaml
+  - tasks/date-window.yaml
+  - tasks/score-normalization.yaml
+  - tasks/deduplicate-incidents.yaml
+  - tasks/table-to-json.yaml

@@ -1,0 +1,40 @@
+id: llm-practical-regression-triage-001
+name: Benchmark regression triage
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Triage this before/after benchmark comparison.
+
+  Baseline:
+  - target: local-qwen; task: json_repair; pass_rate: 0.94; p95_latency_ms: 820; malformed_response: 2
+  - target: openrouter-small; task: json_repair; pass_rate: 0.93; p95_latency_ms: 510; malformed_response: 3
+  - target: openai-mini; task: json_repair; pass_rate: 0.96; p95_latency_ms: 620; malformed_response: 1
+
+  Candidate release:
+  - target: local-qwen; task: json_repair; pass_rate: 0.93; p95_latency_ms: 850; malformed_response: 3
+  - target: openrouter-small; task: json_repair; pass_rate: 0.78; p95_latency_ms: 540; malformed_response: 21
+  - target: openai-mini; task: json_repair; pass_rate: 0.96; p95_latency_ms: 625; malformed_response: 1
+
+  Regression policy:
+  - fail if pass_rate drops by more than 0.05
+  - fail if malformed_response count increases by at least 10
+  - latency changes under 100 ms are not release blockers
+
+  Required fields: release_decision, failing_target, failing_task, regression_reasons, recommended_action.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    release_decision: hold_rollout
+    failing_target: openrouter-small
+    failing_task: json_repair
+    recommended_action: investigate_malformed_responses
+  json_field_array_exact:
+    regression_reasons:
+      - pass_rate_drop
+      - malformed_response_spike
+  expect_not_contains:
+    - "latency blocker"
+    - "local-qwen"

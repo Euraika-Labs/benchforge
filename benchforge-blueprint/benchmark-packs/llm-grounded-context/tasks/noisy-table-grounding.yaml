@@ -1,0 +1,44 @@
+id: llm-grounded-noisy-table-grounding-001
+name: Noisy table grounding
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Use the table and notes. Ignore rows marked draft.
+
+  | source_id | status | target | passed | total | p95_ms | cost_usd |
+  | R1 | final | local-qwen | 18 | 20 | 840 | 0.000 |
+  | R2 | draft | cloud-fast | 20 | 20 | 390 | 0.120 |
+  | R3 | final | openrouter-small | 17 | 20 | 430 | 0.018 |
+  | R4 | final | openai-mini | 19 | 20 | 610 | 0.045 |
+
+  Notes:
+  - Choose best_pass_rate_target only from final rows.
+  - Choose fastest_final_target only from final rows.
+  - Include evidence_ids.
+
+  Required fields:
+  - best_pass_rate_target
+  - fastest_final_target
+  - ignored_rows
+  - openai_mini_pass_rate
+  - evidence_ids
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    best_pass_rate_target: openai-mini
+    fastest_final_target: openrouter-small
+  json_field_array_exact:
+    ignored_rows:
+      - R2
+    evidence_ids:
+      - R3
+      - R4
+  json_field_number_close:
+    openai_mini_pass_rate:
+      expected: 0.95
+      tolerance: 0.0001
+  expect_not_contains:
+    - "cloud-fast"

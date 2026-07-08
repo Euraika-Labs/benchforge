@@ -1,0 +1,21 @@
+id: ollama-openai
+name: Ollama OpenAI-compatible
+kind: openai_compatible
+adapter_version: 1
+schema_version: 1
+default_base_url: http://localhost:11434/v1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: false
+  json_mode: false
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  token_usage_reporting: false
+security:
+  network_required: local
+validation:
+  endpoint: /models
+metadata:
+  docs: https://docs.ollama.com/api/openai-compatibility

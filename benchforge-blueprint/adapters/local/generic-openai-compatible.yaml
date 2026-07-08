@@ -1,0 +1,21 @@
+id: openai-compatible
+name: Generic OpenAI-compatible
+kind: openai_compatible
+adapter_version: 1
+schema_version: 1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: false
+  json_mode: false
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  token_usage_reporting: false
+security:
+  network_required: local_or_remote
+validation:
+  endpoint: /models
+metadata:
+  docs: https://platform.openai.com/docs/api-reference/chat
+  setup_note: Enter the full OpenAI-compatible base URL, for example http://localhost:8000/v1 or https://example.com/v1.

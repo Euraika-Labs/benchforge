@@ -1,0 +1,23 @@
+id: llm-practical-routing-001
+name: Incident routing
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Route this incident:
+  "After release 2026.07.06, all paid workspaces receive HTTP 500 during checkout. Free workspaces are unaffected. Rollback is available."
+
+  Required fields:
+  - team
+  - severity
+  - action
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    team: payments
+    severity: p1
+    action: rollback
+  expect_not_contains:
+    - "```"

@@ -1,0 +1,36 @@
+id: llm-grounded-contradiction-resolution-001
+name: Resolve conflicting evidence
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Use the freshest authoritative source when sources conflict.
+
+  Context:
+  [runbook-old] 2026-06-01 runbook says checkout owner_team is platform.
+  [incident-brief] 2026-07-07 incident brief says checkout owner_team is payments.
+  [chat-rumor] 2026-07-07 chat message says owner might be growth, but it is unconfirmed.
+  [postmortem] 2026-07-08 approved postmortem confirms checkout owner_team is payments and root_cause is retry storm after deploy 2026.07.07.
+
+  Required fields:
+  - owner_team
+  - root_cause
+  - selected_source_id
+  - rejected_source_ids
+  - conflict_resolution
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    owner_team: payments
+    root_cause: retry_storm_after_deploy
+    selected_source_id: postmortem
+    conflict_resolution: freshest_authoritative_source
+  json_field_array_exact:
+    rejected_source_ids:
+      - runbook-old
+      - chat-rumor
+  expect_not_contains:
+    - "platform"
+    - "growth"

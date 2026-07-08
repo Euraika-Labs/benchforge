@@ -1,0 +1,10 @@
+id: aider-polyglot-subset
+type: benchmark_harness
+name: Aider Polyglot subset
+version: external
+language: multi
+prompt: "Run configured subset of Aider Polyglot through the worker."
+timeout_seconds: 10800
+scoring:
+  command: ["benchforge-worker", "run", "--kind", "aider-polyglot", "--subset", "small"]
+  parse: aider

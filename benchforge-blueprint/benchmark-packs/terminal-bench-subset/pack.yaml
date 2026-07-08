@@ -1,0 +1,9 @@
+id: terminal-bench-subset
+name: Terminal-Bench subset
+version: 0.1.0
+description: Subset wrapper for terminal-agent evaluation.
+tags: [terminal-bench, cli_agent, terminal]
+estimated_runtime: 30-180 minutes depending target
+requires_sandbox: true
+tasks:
+  - tasks/terminal-bench-subset.yaml

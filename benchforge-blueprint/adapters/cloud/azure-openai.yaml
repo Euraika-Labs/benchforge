@@ -1,0 +1,25 @@
+id: azure-openai
+name: Azure OpenAI
+kind: azure_openai
+adapter_version: 1
+schema_version: 1
+default_base_url: https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  cost_reporting: true
+  token_usage_reporting: true
+security:
+  network_required: internet
+validation:
+  secret_env: AZURE_OPENAI_API_KEY
+metadata:
+  docs: https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/responses
+  pricing_source: https://azure.microsoft.com/en-us/pricing/details/azure-openai/
+  pricing_note: Azure pricing varies by region, deployment, and processing mode; enter manual prices for reproducible reports.
+  setup_note: Use the Azure /openai/v1 base URL and put the deployment name in the Model field.

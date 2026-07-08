@@ -1,48 +1,46 @@
 name: Bug report
-description: Report a reproducible problem.
-title: "bug: "
-labels: ["bug"]
+description: Report a reproducible BenchForge problem.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
 body:
-  - type: markdown
-    attributes:
-      value: Thanks for reporting a bug. Please do not include secrets or private data.
   - type: textarea
     id: summary
     attributes:
       label: Summary
-      description: What happened?
+      description: What went wrong?
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Steps to reproduce
-      description: List the smallest set of steps that reproduces the issue.
+      label: Reproduction Steps
+      description: Include the target type, benchmark pack, and commands or UI steps.
       placeholder: |
-        1. ...
-        2. ...
-        3. ...
+        1. Start the app with make dev
+        2. Add target ...
+        3. Run pack ...
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Expected behavior
+      label: Expected Behavior
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: Actual behavior
+      label: Actual Behavior
     validations:
       required: true
   - type: input
-    id: environment
+    id: platform
     attributes:
-      label: Environment
-      placeholder: OS, browser/runtime, version
+      label: Platform
+      placeholder: "macOS version, CPU architecture"
   - type: textarea
-    id: extra
+    id: logs
     attributes:
-      label: Additional context
-      description: Logs or screenshots are helpful after removing secrets.
+      label: Logs or Readiness Summary
+      description: Redact secrets before attaching logs or report exports.
+      render: text

@@ -1,0 +1,33 @@
+id: llm-decision-abstain-001
+name: Abstain when evidence is missing
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  A manager asks: "Should we replace the current support model with Model Z?"
+
+  Known facts:
+  - Model Z was tested on 12 synthetic examples.
+  - The current production model has 96% pass rate on the customer-support pack.
+  - Model Z has no measured p95 latency yet.
+  - No cost estimate is available for Model Z.
+
+  Required fields:
+  - decision: approve, reject, or insufficient_evidence
+  - missing_evidence
+  - confidence
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    decision: insufficient_evidence
+    confidence: low
+  json_field_array_exact:
+    missing_evidence:
+      - production benchmark
+      - latency
+      - cost
+  expect_not_contains:
+    - approve
+    - 99%

@@ -1,0 +1,46 @@
+id: gemini
+name: Google Gemini
+kind: openai_compatible
+adapter_version: 1
+schema_version: 1
+default_base_url: https://generativelanguage.googleapis.com/v1beta/openai
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  cost_reporting: true
+  token_usage_reporting: true
+security:
+  network_required: internet
+validation:
+  secret_env: GEMINI_API_KEY
+metadata:
+  docs: https://ai.google.dev/gemini-api/docs/openai
+  pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+  pricing_verified_at: "2026-07-08"
+  setup_note: Uses Google Gemini's OpenAI-compatible endpoint; get an API key from Google AI Studio.
+  model_presets:
+    - label: Gemini 3.5 Flash
+      model: gemini-3.5-flash
+      input_price_usd_per_million_tokens: 1.5
+      output_price_usd_per_million_tokens: 9.0
+      source: https://ai.google.dev/gemini-api/docs/pricing
+    - label: Gemini 3.1 Flash-Lite
+      model: gemini-3.1-flash-lite
+      input_price_usd_per_million_tokens: 0.25
+      output_price_usd_per_million_tokens: 1.5
+      source: https://ai.google.dev/gemini-api/docs/pricing
+    - label: Gemini 2.5 Flash
+      model: gemini-2.5-flash
+      input_price_usd_per_million_tokens: 0.3
+      output_price_usd_per_million_tokens: 2.5
+      source: https://ai.google.dev/gemini-api/docs/pricing
+    - label: Gemini 2.5 Flash-Lite
+      model: gemini-2.5-flash-lite
+      input_price_usd_per_million_tokens: 0.1
+      output_price_usd_per_million_tokens: 0.4
+      source: https://ai.google.dev/gemini-api/docs/pricing

@@ -1,0 +1,23 @@
+id: llm-core-classification-001
+name: Support ticket classification
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Classify this support ticket:
+  "The enterprise invoice is overdue because the card was charged twice, and our finance team needs a correction before renewal today."
+
+  Expected JSON fields:
+  - category: billing
+  - priority: high
+  - sentiment: negative
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    category: billing
+    priority: high
+    sentiment: negative
+  expect_not_contains:
+    - "```"

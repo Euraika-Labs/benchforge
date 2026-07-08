@@ -1,0 +1,30 @@
+id: mistral
+name: Mistral API
+kind: mistral_api
+adapter_version: 1
+schema_version: 1
+default_base_url: https://api.mistral.ai/v1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  cost_reporting: true
+  token_usage_reporting: true
+security:
+  network_required: internet
+validation:
+  secret_env: MISTRAL_API_KEY
+metadata:
+  docs: https://docs.mistral.ai/
+  pricing_source: https://mistral.ai/pricing/
+  pricing_verified_at: "2026-07-06"
+  model_presets:
+    - label: Mistral Large
+      model: mistral-large-latest
+      input_price_usd_per_million_tokens: 2.0
+      output_price_usd_per_million_tokens: 6.0
+      source: https://mistral.ai/pricing/

@@ -1,0 +1,30 @@
+id: llm-decision-deduplicate-incidents-001
+name: Incident deduplication
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Deduplicate these incidents:
+  - INC-101: checkout returns HTTP 500 for paid workspaces after release 2026.07.06
+  - INC-102: paid customers cannot complete checkout, rollback is available
+  - INC-103: export CSV button times out for enterprise tenants
+  - INC-104: checkout 500s after latest deploy, free workspaces unaffected
+
+  Required fields:
+  - groups
+  - unique_incident_count
+  - primary_group_owner
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    unique_incident_count: 2
+    primary_group_owner: payments
+  json_field_array_exact:
+    groups.checkout:
+      - INC-101
+      - INC-102
+      - INC-104
+    groups.export:
+      - INC-103

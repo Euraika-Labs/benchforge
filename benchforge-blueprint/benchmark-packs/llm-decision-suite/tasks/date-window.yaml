@@ -1,0 +1,27 @@
+id: llm-decision-date-window-001
+name: Date window calculation
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Today is 2026-07-07.
+  A vendor renewal deadline is 2026-07-16 at 17:00 Europe/Brussels.
+  Legal review takes 3 business days.
+  Security review takes 2 business days and can run in parallel with legal.
+
+  Required fields:
+  - days_until_deadline
+  - latest_start_date
+  - parallel_reviews
+  - risk
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    days_until_deadline: 9
+    latest_start_date: "2026-07-13"
+    parallel_reviews: true
+    risk: manageable
+  expect_not_contains:
+    - "2026-07-14"

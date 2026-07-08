@@ -1,0 +1,21 @@
+id: llm-practical-contradiction-001
+name: Contract contradiction detection
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Statement A: "The customer may terminate for convenience with 30 days notice."
+  Statement B: "The customer cannot terminate for convenience before the initial 12 month term ends."
+
+  Required fields:
+  - contradiction
+  - topic
+  - needs_review
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    contradiction: true
+    topic: termination_for_convenience
+    needs_review: true

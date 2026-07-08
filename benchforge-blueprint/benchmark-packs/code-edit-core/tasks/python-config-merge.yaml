@@ -1,0 +1,20 @@
+id: code-edit-python-config-merge-001
+name: Preserve nested config while merging overrides
+version: 0.1.0
+type: repo_patch
+language: python
+fixture: ../../../fixtures/python-config-merge
+prompt: |
+  Fix merge_config so it recursively merges dictionaries without mutating either input.
+
+  Requirements:
+  - preserve nested keys that are not overridden;
+  - replace lists and non-dictionary values rather than merging them;
+  - return a new dictionary;
+  - keep the public function name unchanged.
+
+timeout_seconds: 600
+max_turns: 8
+scoring:
+  command: ["python", "-m", "unittest", "-q"]
+  parse: unittest

@@ -1,0 +1,14 @@
+.DS_Store
+node_modules/
+dist/
+target/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+.env.*
+!.env.example
+.benchforge/
+benchforge-runs/
+artifacts/

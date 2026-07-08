@@ -1,0 +1,36 @@
+id: llm-reliability-ambiguous-requirements-001
+name: Ambiguous requirement handling
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  A product manager asks: "Pick the best model for support ticket drafting."
+
+  Available benchmark notes:
+  - atlas-local: pass_rate 0.89, p95_latency_ms 430, cost_usd_per_1k_tickets 0.00
+  - boreal-cloud: pass_rate 0.95, p95_latency_ms 980, cost_usd_per_1k_tickets 4.20
+  - cygnus-cloud: pass_rate 0.92, p95_latency_ms 520, cost_usd_per_1k_tickets 2.10
+
+  Missing decision constraints:
+  - minimum acceptable pass rate
+  - latency target
+  - budget cap
+
+  Required fields: decision, selected_model_id, missing_constraints, safe_next_action.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    decision: ask_for_constraints
+    selected_model_id: null
+    safe_next_action: collect_requirements
+  json_field_array_exact:
+    missing_constraints:
+      - minimum acceptable pass rate
+      - latency target
+      - budget cap
+  expect_not_contains:
+    - "atlas-local is best"
+    - "boreal-cloud is best"
+    - "cygnus-cloud is best"

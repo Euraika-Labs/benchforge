@@ -1,0 +1,28 @@
+id: llm-grounded-context
+name: LLM Grounded Context
+version: 0.1.0
+description: Judge-free checks for comparing local and cloud models on evidence grounding, citation selection, distractor resistance, contradiction handling, and unsupported-claim refusal.
+tags: [prompt, llm, grounding, citations, comparison]
+estimated_runtime: 6-15 minutes
+requires_sandbox: false
+calibration:
+  status: pilot
+  sample_size: 0
+  last_reviewed: "2026-07-08"
+  review_scope: contract_review
+  quality_gates:
+    - local_cloud_baseline_pair
+    - provider_confirmed_model_identity
+    - complete_pack_task_coverage
+    - min_3_repetitions_per_task_target
+    - cost_metrics_for_cloud_targets
+    - single_generation_policy
+    - review_before_public_leaderboard
+  notes: Reviewed grounded-context contracts for first-pass local/cloud comparison; not empirically calibrated against public baselines.
+tasks:
+  - tasks/needle-citation.yaml
+  - tasks/distractor-filter.yaml
+  - tasks/contradiction-resolution.yaml
+  - tasks/unsupported-claim.yaml
+  - tasks/multi-document-synthesis.yaml
+  - tasks/noisy-table-grounding.yaml

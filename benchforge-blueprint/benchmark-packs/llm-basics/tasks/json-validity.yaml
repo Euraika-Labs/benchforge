@@ -1,0 +1,13 @@
+id: llm-json-validity-001
+name: JSON validity and fields
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON with these exact fields:
+  {"task":"benchmark","valid":true,"items":["local","cloud"]}
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    task: benchmark
+    valid: true

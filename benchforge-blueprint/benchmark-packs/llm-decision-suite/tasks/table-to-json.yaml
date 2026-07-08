@@ -1,0 +1,29 @@
+id: llm-decision-table-to-json-001
+name: Compact table to JSON
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Convert this table into a summary:
+  | target | passed | total | avg_latency_ms | cost_usd |
+  | local-qwen | 18 | 20 | 840 | 0.00 |
+  | openrouter-small | 17 | 20 | 430 | 0.018 |
+  | openai-mini | 19 | 20 | 610 | 0.045 |
+
+  Required fields:
+  - best_pass_rate_target
+  - fastest_target
+  - zero_cost_target
+  - openai_mini_pass_rate
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    best_pass_rate_target: openai-mini
+    fastest_target: openrouter-small
+    zero_cost_target: local-qwen
+  json_field_number_close:
+    openai_mini_pass_rate:
+      expected: 0.95
+      tolerance: 0.0001

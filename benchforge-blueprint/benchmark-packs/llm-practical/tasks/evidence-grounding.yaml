@@ -1,0 +1,32 @@
+id: llm-practical-evidence-grounding-001
+name: Evidence-grounded decision
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Use only these facts:
+  - claim_1: Vendor Atlas is up for renewal on 2026-08-15.
+  - claim_2: Atlas has one unresolved Sev-1 data export incident.
+  - claim_3: Legal requires a signed DPA addendum before renewal approval.
+  - claim_4: The budget owner already approved the renewal spend.
+
+  Question: Should the renewal be approved today?
+
+  Required fields:
+  - decision: approve, defer, or reject
+  - blocking_claim_ids: array
+  - confidence: low, medium, or high
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    decision: defer
+    confidence: high
+  json_field_array_exact:
+    blocking_claim_ids:
+      - claim_2
+      - claim_3
+  expect_not_contains:
+    - "claim_5"
+    - "invented"

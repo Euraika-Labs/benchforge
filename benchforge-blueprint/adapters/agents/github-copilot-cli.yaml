@@ -1,0 +1,29 @@
+id: github-copilot-cli
+name: GitHub Copilot CLI
+kind: cli_agent
+adapter_version: 1
+schema_version: 1
+command: copilot
+args:
+  - -p
+  - "{{prompt}}"
+  - -s
+  - --no-ask-user
+  - --allow-tool=read,write,shell
+working_dir: "{{workspace}}"
+timeout_seconds: 900
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: false
+  file_editing: true
+  shell_execution: true
+  repo_agent: true
+security:
+  sandbox_required: true
+validation:
+  command_args:
+    - help
+metadata:
+  docs: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference

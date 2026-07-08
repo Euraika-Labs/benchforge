@@ -1,0 +1,42 @@
+id: llm-reliability-context-recall-001
+name: Long-context targeted recall
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Use the context blocks to answer the question. Several blocks are distractors.
+
+  [A1] Atlas local model completed the May smoke benchmark in 4 minutes.
+  [A2] Boreal cloud model had the lowest p95 latency in the June support benchmark.
+  [A3] Contract renewal for Helios Bank is owned by Priya Shah.
+  [A4] Do not use this block for pricing; it describes a retired model.
+  [A5] Workspace export was unaffected by the checkout regression.
+  [A6] Helios Bank renewal deadline is 2026-08-14.
+  [A7] Local models must stay under 2048 context tokens for the small laptop profile.
+  [A8] Boreal cloud model costs 2.10 USD per 1k support tickets in the current estimate.
+  [A9] A stale note says renewal ownership moved to Niko, but it was superseded by [A3].
+  [A10] The support-drafting benchmark excludes production incident-rate claims.
+
+  Question: For Helios Bank, identify the renewal owner, deadline, cloud support-ticket cost, and exactly the evidence ids used.
+
+  Required fields: account, owner, deadline, cloud_cost_usd_per_1k_tickets, evidence_ids.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    account: Helios Bank
+    owner: Priya Shah
+    deadline: "2026-08-14"
+  json_field_number_close:
+    cloud_cost_usd_per_1k_tickets:
+      expected: 2.10
+      tolerance: 0.0001
+  json_field_array_exact:
+    evidence_ids:
+      - A3
+      - A6
+      - A8
+  expect_not_contains:
+    - Niko
+    - retired model

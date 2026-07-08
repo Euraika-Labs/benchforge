@@ -1,0 +1,12 @@
+id: security-defensive
+name: Defensive secure-code checks
+version: 0.1.0
+description: Defensive-only checks for generated patches.
+tags: [security, defensive, static-analysis]
+estimated_runtime: 5-60 minutes
+requires_sandbox: true
+tasks:
+  - tasks/semgrep-basic.yaml
+  - tasks/bandit-basic.yaml
+  - tasks/dependency-basic.yaml
+  - tasks/secrets-basic.yaml

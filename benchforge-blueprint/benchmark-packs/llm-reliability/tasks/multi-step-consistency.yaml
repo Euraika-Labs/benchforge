@@ -1,0 +1,44 @@
+id: llm-reliability-multi-step-consistency-001
+name: Multi-step consistency
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  A run group measured 40 tasks per model.
+
+  Model results:
+  - local-qwen: passed 35, total_cost_usd 0.00, p95_latency_ms 1180
+  - cloud-mini: passed 38, total_cost_usd 0.84, p95_latency_ms 710
+  - cloud-large: passed 39, total_cost_usd 5.40, p95_latency_ms 1260
+
+  Selection policy:
+  - Eligible models must have pass_rate >= 0.90.
+  - Eligible models must have p95_latency_ms <= 1000.
+  - Among eligible models, choose the lowest total_cost_usd.
+
+  Required fields: eligible_model_ids, rejected_model_ids, selected_model_id, pass_rates, reason.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    selected_model_id: cloud-mini
+  json_field_array_exact:
+    eligible_model_ids:
+      - cloud-mini
+    rejected_model_ids:
+      - local-qwen
+      - cloud-large
+  json_field_contains:
+    reason:
+      - lowest total_cost_usd
+  json_field_number_close:
+    pass_rates.local-qwen:
+      expected: 0.875
+      tolerance: 0.0001
+    pass_rates.cloud-mini:
+      expected: 0.95
+      tolerance: 0.0001
+    pass_rates.cloud-large:
+      expected: 0.975
+      tolerance: 0.0001

@@ -1,0 +1,24 @@
+id: llm-practical-entity-resolution-001
+name: Entity resolution
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Match the customer from this note to the canonical account.
+
+  Canonical accounts:
+  - id: acct_17, name: Northstar Labs
+  - id: acct_22, name: Northern Star Logistics
+  - id: acct_31, name: North Star Lab Supplies
+
+  Note: "N. Star Labs asked to add SSO before the August renewal."
+
+  Required fields: account_id, account_name, confidence.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    account_id: acct_17
+    account_name: Northstar Labs
+    confidence: high

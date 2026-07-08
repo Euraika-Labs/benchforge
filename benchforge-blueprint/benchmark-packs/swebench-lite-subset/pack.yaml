@@ -1,0 +1,9 @@
+id: swebench-lite-subset
+name: SWE-bench Lite subset
+version: 0.1.0
+description: Heavy repo-level bugfix benchmark wrapper. Disabled by default in first-run UX.
+tags: [swe-bench, repo_patch, heavy]
+estimated_runtime: hours
+requires_sandbox: true
+tasks:
+  - tasks/swebench-lite-subset.yaml

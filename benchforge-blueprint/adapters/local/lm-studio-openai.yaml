@@ -1,0 +1,21 @@
+id: lm-studio-openai
+name: LM Studio local server
+kind: openai_compatible
+adapter_version: 1
+schema_version: 1
+default_base_url: http://localhost:1234/v1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  token_usage_reporting: true
+security:
+  network_required: local
+validation:
+  endpoint: /models
+metadata:
+  docs: https://lmstudio.ai/docs/developer/core/server

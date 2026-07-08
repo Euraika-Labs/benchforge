@@ -1,0 +1,39 @@
+id: llm-grounded-distractor-filter-001
+name: Distractor filtering
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Use only the supplied context. Identify which services were impacted by the checkout incident. Do not include distractors.
+
+  Context:
+  [A] Billing API latency increased in EU tenants during a separate maintenance window.
+  [B] Checkout API returned HTTP 500 for paid workspaces after release 2026.07.06.
+  [C] Search indexing lagged for free workspaces, but no customer ticket was opened.
+  [D] Checkout API retry errors increased after the same release.
+  [E] Workspace export was explicitly unaffected.
+
+  Required fields:
+  - impacted_services
+  - unaffected_services
+  - excluded_distractors
+  - evidence_ids
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_array_exact:
+    impacted_services:
+      - Checkout API
+    unaffected_services:
+      - Workspace export
+    excluded_distractors:
+      - Billing API
+      - Search indexing
+    evidence_ids:
+      - B
+      - D
+      - E
+  expect_not_contains:
+    - "\"Billing API\",\"Checkout API\""
+    - "all services"

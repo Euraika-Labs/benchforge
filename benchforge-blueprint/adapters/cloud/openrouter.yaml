@@ -1,0 +1,24 @@
+id: openrouter
+name: OpenRouter
+kind: openai_compatible
+adapter_version: 1
+schema_version: 1
+default_base_url: https://openrouter.ai/api/v1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  cost_reporting: true
+  token_usage_reporting: true
+security:
+  network_required: internet
+validation:
+  secret_env: OPENROUTER_API_KEY
+metadata:
+  docs: https://openrouter.ai/docs
+  pricing_source: https://openrouter.ai/docs/guides/overview/models
+  pricing_note: OpenRouter pricing is per routed model and can be queried from its /api/v1/models endpoint; enter manual prices for reproducible reports.

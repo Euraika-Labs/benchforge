@@ -1,0 +1,10 @@
+id: llm-instruction-following-001
+name: Exact instruction following
+version: 0.1.0
+type: prompt
+prompt: |
+  Reply with exactly this lowercase word and no other text:
+  benchforge
+timeout_seconds: 120
+scoring:
+  expect_exact: benchforge

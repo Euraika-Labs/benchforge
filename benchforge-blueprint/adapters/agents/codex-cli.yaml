@@ -1,0 +1,29 @@
+id: codex-cli
+name: OpenAI Codex CLI
+kind: cli_agent
+adapter_version: 1
+schema_version: 1
+command: codex
+args:
+  - exec
+  - --cd
+  - "{{workspace}}"
+  - "{{prompt}}"
+working_dir: "{{workspace}}"
+timeout_seconds: 900
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: false
+  file_editing: true
+  shell_execution: true
+  repo_agent: true
+security:
+  sandbox_required: true
+  allow_yolo_only_in_sandbox: true
+validation:
+  command_args:
+    - --version
+metadata:
+  docs: https://developers.openai.com/codex/noninteractive

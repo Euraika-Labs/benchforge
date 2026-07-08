@@ -1,0 +1,10 @@
+id: evalplus
+name: EvalPlus HumanEval+ and MBPP+
+version: 0.1.0
+description: Wrapper pack for EvalPlus code generation benchmarks.
+tags: [evalplus, humanevalplus, mbppplus, code_generation]
+estimated_runtime: varies
+requires_sandbox: true
+tasks:
+  - tasks/humaneval-plus.yaml
+  - tasks/mbpp-plus.yaml

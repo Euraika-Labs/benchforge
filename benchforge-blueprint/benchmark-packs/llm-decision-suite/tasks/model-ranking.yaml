@@ -1,0 +1,43 @@
+id: llm-decision-model-ranking-001
+name: Constraint-based model ranking
+version: 0.1.0
+type: prompt
+weight: 1.5
+prompt: |
+  Return only compact JSON.
+
+  Choose one model for a payment-risk extraction workflow.
+
+  Candidates:
+  | model_id | pass_rate | json_validity | p95_latency_ms | cost_per_1k_calls |
+  | local-14b | 0.93 | 0.99 | 880 | 0.00 |
+  | cloud-fast | 0.90 | 0.95 | 360 | 0.12 |
+  | cloud-balanced | 0.96 | 0.99 | 920 | 0.45 |
+  | cloud-large | 0.98 | 0.995 | 1800 | 1.90 |
+
+  Constraints:
+  - pass_rate must be at least 0.95
+  - json_validity must be at least 0.98
+  - p95_latency_ms must be below 1200
+  - minimize cost after constraints pass
+
+  Required fields: selected_model_id, rejected_model_ids, reason_codes.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    selected_model_id: cloud-balanced
+  json_field_array_exact:
+    rejected_model_ids:
+      - local-14b
+      - cloud-fast
+      - cloud-large
+  json_field_contains:
+    reason_codes:
+      - pass_rate
+      - json_validity
+      - latency
+      - cost
+  expect_not_contains:
+    - "cloud-large is selected"
+    - "local-14b is selected"

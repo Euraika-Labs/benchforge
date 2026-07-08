@@ -1,0 +1,11 @@
+id: bandit-basic
+type: benchmark_harness
+name: Bandit Python security scan
+version: external
+language: python
+fixture: ../../../fixtures/security-defensive-basic
+prompt: "Run Bandit security checks on generated Python code."
+timeout_seconds: 1800
+scoring:
+  command: ["benchforge-worker", "run", "--kind", "security", "--tool", "bandit"]
+  parse: worker-jsonl

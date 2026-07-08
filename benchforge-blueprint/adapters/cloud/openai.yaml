@@ -1,0 +1,45 @@
+id: openai
+name: OpenAI
+kind: openai_responses
+adapter_version: 1
+schema_version: 1
+default_base_url: https://api.openai.com/v1
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  cost_reporting: true
+  token_usage_reporting: true
+security:
+  network_required: internet
+validation:
+  secret_env: OPENAI_API_KEY
+metadata:
+  docs: https://developers.openai.com/api/docs/models
+  pricing_source: https://developers.openai.com/api/docs/pricing
+  pricing_verified_at: "2026-07-06"
+  model_presets:
+    - label: GPT-5 mini
+      model: gpt-5-mini
+      input_price_usd_per_million_tokens: 0.25
+      output_price_usd_per_million_tokens: 2.0
+      source: https://developers.openai.com/api/docs/models/gpt-5-mini
+    - label: GPT-4.1
+      model: gpt-4.1
+      input_price_usd_per_million_tokens: 2.0
+      output_price_usd_per_million_tokens: 8.0
+      source: https://openai.com/index/gpt-4-1/
+    - label: GPT-4.1 mini
+      model: gpt-4.1-mini
+      input_price_usd_per_million_tokens: 0.4
+      output_price_usd_per_million_tokens: 1.6
+      source: https://openai.com/index/gpt-4-1/
+    - label: GPT-4.1 nano
+      model: gpt-4.1-nano
+      input_price_usd_per_million_tokens: 0.1
+      output_price_usd_per_million_tokens: 0.4
+      source: https://openai.com/index/gpt-4-1/

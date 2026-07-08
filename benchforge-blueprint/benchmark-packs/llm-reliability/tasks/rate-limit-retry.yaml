@@ -1,0 +1,38 @@
+id: llm-reliability-rate-limit-retry-001
+name: Rate-limit retry discipline
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Interpret this failed cloud benchmark slice before anyone labels the model bad.
+
+  Run notes:
+  - target_id: openrouter-small
+  - pack: llm-reliability
+  - concurrency: 6
+  - provider_attempts: 1
+  - non_passing_results: 7 of 40
+  - repeated error_code: rate_limit
+  - repeated http_status: 429
+  - provider Retry-After header: 4 seconds
+  - no auth, model_not_found, malformed_response, or content_filter errors
+
+  Required fields: root_cause, retryable, recommended_action, config_changes, do_not_conclude.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    root_cause: rate_limited
+    retryable: true
+    recommended_action: reduce_concurrency_and_retry
+    do_not_conclude: model_quality_regression
+  json_field_array_exact:
+    config_changes:
+      - lower_concurrency
+      - honor_retry_after
+      - increase_provider_retries
+  expect_not_contains:
+    - "bad model"
+    - "switch providers"
+    - "model quality"

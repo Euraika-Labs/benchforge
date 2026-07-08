@@ -1,0 +1,42 @@
+id: llm-grounded-multi-document-synthesis-001
+name: Multi-document synthesis
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Use only the supplied context. Produce a short incident summary with cited evidence.
+
+  Context:
+  [log-1] 14:20 UTC checkout error rate rose from 0.2% to 18%.
+  [deploy-7] Deploy 2026.07.07 finished at 14:17 UTC and changed checkout retry settings.
+  [support-2] Paid workspace customers reported failed checkout attempts.
+  [metric-9] Billing API latency remained within normal range.
+  [rollback-3] Rollback at 15:05 UTC restored checkout error rate below 1%.
+
+  Required fields:
+  - summary
+  - impact
+  - likely_trigger
+  - mitigation
+  - evidence_ids
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    impact: paid_workspace_checkout_failures
+    likely_trigger: checkout_retry_settings_deploy
+    mitigation: rollback
+  json_field_contains:
+    summary:
+      - checkout
+      - rollback
+  json_field_array_exact:
+    evidence_ids:
+      - log-1
+      - deploy-7
+      - support-2
+      - rollback-3
+  expect_not_contains:
+    - "Billing API caused"
+    - "metric-9"

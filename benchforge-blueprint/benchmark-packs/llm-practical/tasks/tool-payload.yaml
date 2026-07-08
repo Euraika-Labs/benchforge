@@ -1,0 +1,22 @@
+id: llm-practical-tool-payload-001
+name: Tool payload construction
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON for a tool call.
+
+  User request:
+  "Open a priority support ticket for account acct_17 titled Checkout outage, assign it to payments, and mark it P1."
+
+  Required top-level fields: tool, arguments.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    tool: create_support_ticket
+    arguments.account_id: acct_17
+    arguments.title: Checkout outage
+    arguments.team: payments
+    arguments.priority: P1
+  expect_not_contains:
+    - markdown

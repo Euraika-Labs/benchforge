@@ -1,0 +1,31 @@
+id: claude-code
+name: Claude Code
+kind: cli_agent
+adapter_version: 1
+schema_version: 1
+command: claude
+args:
+  - --bare
+  - -p
+  - "{{prompt}}"
+  - --output-format
+  - json
+working_dir: "{{workspace}}"
+timeout_seconds: 900
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: true
+  shell_execution: true
+  repo_agent: true
+  cost_reporting: true
+  token_usage_reporting: true
+security:
+  sandbox_required: true
+validation:
+  command_args:
+    - --version
+metadata:
+  docs: https://code.claude.com/docs/en/headless

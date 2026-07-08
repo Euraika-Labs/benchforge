@@ -1,0 +1,21 @@
+.DS_Store
+*.swp
+*.tmp
+
+# Local runtime data, generated artifacts, and dependency caches.
+**/.benchforge/
+**/node_modules/
+**/dist/
+**/target/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.egg-info/
+
+# Secrets and machine-local environment.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example

@@ -1,0 +1,33 @@
+id: llm-structured-nested-tool-call-001
+name: Nested tool call arguments
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON for a tool call.
+
+  User request:
+  "Create a P1 incident for acct_42, title Checkout outage, assign payments as owner, add tags checkout and regression, and notify ops@example.com."
+
+  Required fields:
+  - tool
+  - arguments.account_id
+  - arguments.incident.title
+  - arguments.incident.priority
+  - arguments.incident.owner_team
+  - arguments.notify.email
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    tool: create_incident
+    arguments.account_id: acct_42
+    arguments.incident.title: Checkout outage
+    arguments.incident.priority: P1
+    arguments.incident.owner_team: payments
+    arguments.notify.email: ops@example.com
+  json_field_array_exact:
+    arguments.incident.tags:
+      - checkout
+      - regression
+  expect_not_contains:
+    - markdown

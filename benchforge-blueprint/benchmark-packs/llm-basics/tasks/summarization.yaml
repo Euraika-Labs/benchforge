@@ -1,0 +1,13 @@
+id: llm-summarization-001
+name: Short summarization
+version: 0.1.0
+type: prompt
+prompt: |
+  Summarize this in one sentence:
+  BenchForge compares language models by running benchmark packs against local runtimes and cloud APIs, storing scores, artifacts, timing, and reproducibility metadata for each run.
+timeout_seconds: 120
+scoring:
+  expect_contains:
+    - benchmark
+    - local
+    - cloud

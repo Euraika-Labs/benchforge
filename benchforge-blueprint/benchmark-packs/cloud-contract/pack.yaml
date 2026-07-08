@@ -1,0 +1,9 @@
+id: cloud-contract
+name: Cloud Provider Contract
+version: 0.1.0
+description: Tiny prompt-only smoke pack for verifying cloud-provider request and metric contracts.
+tags: [prompt, llm, smoke, cloud]
+estimated_runtime: under 1 minute
+requires_sandbox: false
+tasks:
+  - tasks/provider-contract.yaml

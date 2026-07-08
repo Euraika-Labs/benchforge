@@ -1,0 +1,21 @@
+id: code-edit-js-retry-delay-001
+name: Implement capped retry backoff
+version: 0.1.0
+type: repo_patch
+language: javascript
+fixture: ../../../fixtures/js-retry-delay
+prompt: |
+  Fix retryDelay so it returns deterministic exponential backoff delays.
+
+  Requirements:
+  - attempt 0 returns 100;
+  - each later integer attempt doubles the previous delay;
+  - cap the returned delay at 1600 milliseconds;
+  - throw TypeError for negative or non-integer attempts;
+  - keep the exported function name unchanged.
+
+timeout_seconds: 600
+max_turns: 8
+scoring:
+  command: ["npm", "test"]
+  parse: node-test

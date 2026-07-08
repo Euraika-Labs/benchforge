@@ -1,0 +1,9 @@
+id: aider-polyglot-subset
+name: Aider Polyglot subset
+version: 0.1.0
+description: Subset wrapper for Aider's polyglot coding benchmark.
+tags: [aider, polyglot, file_editing]
+estimated_runtime: 15-90 minutes depending target
+requires_sandbox: true
+tasks:
+  - tasks/aider-polyglot-subset.yaml

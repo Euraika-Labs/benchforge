@@ -1,0 +1,41 @@
+id: llm-reliability-confidence-interval-overlap-001
+name: Confidence interval overlap
+version: 0.1.0
+type: prompt
+weight: 1.25
+prompt: |
+  Return only compact JSON.
+
+  A benchmark report compares two targets on the same 12-task pack with 3 repetitions per task.
+
+  Visible aggregate:
+  - local-14b: pass_rate 0.917, Wilson 95% CI [0.787, 0.972], average_cost_usd 0.00, p95_latency_ms 930
+  - cloud-mini: pass_rate 0.944, Wilson 95% CI [0.820, 0.984], average_cost_usd 0.021, p95_latency_ms 760
+
+  Decision policy:
+  - Do not call a decisive winner when the Wilson confidence intervals overlap.
+  - If contenders overlap, mark the result as inconclusive even if one point estimate is higher.
+  - Recommend the minimum next run needed to reduce uncertainty.
+
+  Required fields: decision, selected_model_id, close_contender_ids, uncertainty_reasons, minimum_next_run.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    decision: inconclusive
+    selected_model_id: null
+  json_field_array_exact:
+    close_contender_ids:
+      - local-14b
+      - cloud-mini
+  json_field_contains:
+    uncertainty_reasons:
+      - confidence_intervals_overlap
+      - point_estimate_not_enough
+    minimum_next_run:
+      - same pack
+      - more repetitions
+  expect_not_contains:
+    - "cloud-mini wins"
+    - "cloud-mini is the winner"
+    - "decisive winner"

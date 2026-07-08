@@ -1,0 +1,14 @@
+id: llm-core-arithmetic-001
+name: Exact arithmetic JSON
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON with this exact shape:
+  {"answer":number}
+
+  Calculate: (18 * 3) - 7
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    answer: 47

@@ -1,0 +1,34 @@
+id: llm-reliability-correction-discipline-001
+name: Correction discipline
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  A previous assistant draft made two mistakes:
+  Draft: "Select atlas-local because it passed 39 of 40 tasks and cost 0.84 USD."
+
+  Ground truth:
+  - atlas-local passed 35 of 40 tasks and cost 0.00 USD.
+  - boreal-cloud passed 38 of 40 tasks and cost 0.84 USD.
+  - cygnus-cloud passed 39 of 40 tasks and cost 5.40 USD.
+  - The benchmark policy requires pass_rate >= 0.90 before considering cost.
+
+  Required fields: draft_is_correct, corrected_selected_model_id, correction_reasons, atlas_pass_rate.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    draft_is_correct: false
+    corrected_selected_model_id: boreal-cloud
+  json_field_contains:
+    correction_reasons:
+      - atlas-local pass_rate below threshold
+      - boreal-cloud lowest eligible cost
+  json_field_number_close:
+    atlas_pass_rate:
+      expected: 0.875
+      tolerance: 0.0001
+  expect_not_contains:
+    - "passed 39"
+    - "atlas-local because"

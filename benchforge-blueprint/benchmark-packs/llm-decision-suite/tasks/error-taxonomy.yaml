@@ -1,0 +1,24 @@
+id: llm-decision-error-taxonomy-001
+name: Provider error taxonomy
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Classify this benchmark failure:
+  HTTP status: 429
+  Body: {"error":{"message":"Requests exceeded. Retry after 4 seconds.","type":"rate_limit_exceeded"}}
+  Runner note: "No result row was produced before retry budget ended."
+
+  Required fields: error_code, retryable, retry_after_seconds, user_action.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    error_code: rate_limit
+    retryable: true
+    retry_after_seconds: 4
+    user_action: reduce_concurrency
+  expect_not_contains:
+    - auth
+    - model_not_found

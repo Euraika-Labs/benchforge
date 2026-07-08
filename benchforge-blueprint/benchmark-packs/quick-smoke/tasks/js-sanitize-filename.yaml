@@ -1,0 +1,21 @@
+id: js-sanitize-filename-001
+name: Sanitize unsafe upload filenames
+version: 0.1.0
+type: repo_patch
+language: javascript
+fixture: ../../../fixtures/js-sanitize-filename
+prompt: |
+  The upload helper accepts unsafe filenames. Fix it.
+
+  Requirements:
+  - remove path separators;
+  - reject empty filenames;
+  - replace control characters with underscores;
+  - preserve safe extensions;
+  - keep the exported function name unchanged.
+
+timeout_seconds: 600
+max_turns: 8
+scoring:
+  command: ["npm", "test", "--", "--runInBand"]
+  parse: jest

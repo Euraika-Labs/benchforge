@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BenchForge Benchmark Pack",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "version",
+    "tasks"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "estimated_runtime": {
+      "type": "string"
+    },
+    "requires_sandbox": {
+      "type": "boolean"
+    },
+    "calibration": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "uncalibrated",
+            "pilot",
+            "reviewed",
+            "calibrated"
+          ]
+        },
+        "sample_size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseline_models": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "last_reviewed": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "review_scope": {
+          "type": "string",
+          "enum": [
+            "none",
+            "contract_review",
+            "pilot_runs",
+            "baseline_runs",
+            "production_validation"
+          ]
+        },
+        "quality_gates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "local_cloud_baseline_pair",
+              "provider_confirmed_model_identity",
+              "complete_pack_task_coverage",
+              "min_3_repetitions_per_task_target",
+              "cost_metrics_for_cloud_targets",
+              "single_generation_policy",
+              "documented_baseline_models",
+              "review_before_public_leaderboard"
+            ]
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

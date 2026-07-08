@@ -1,0 +1,9 @@
+id: local-cloud-compare
+name: Local Cloud Compare
+version: 0.1.0
+description: Minimal prompt pack for verifying that local and cloud model targets can run together and produce comparable reports.
+tags: [prompt, llm, comparison, smoke]
+estimated_runtime: <1 minute
+requires_sandbox: false
+tasks:
+  - tasks/ok.yaml

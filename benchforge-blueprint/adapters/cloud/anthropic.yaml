@@ -1,0 +1,46 @@
+id: anthropic
+name: Anthropic Claude
+kind: anthropic_messages
+adapter_version: 1
+schema_version: 1
+default_base_url: https://api.anthropic.com
+capabilities:
+  text_generation: true
+  streaming: true
+  tool_calling: true
+  json_mode: true
+  file_editing: false
+  shell_execution: false
+  repo_agent: false
+  cost_reporting: true
+  token_usage_reporting: true
+security:
+  network_required: internet
+validation:
+  secret_env: ANTHROPIC_API_KEY
+metadata:
+  docs: https://platform.claude.com/docs
+  pricing_source: https://platform.claude.com/docs/en/about-claude/pricing
+  pricing_verified_at: "2026-07-06"
+  model_presets:
+    - label: Claude Sonnet 5
+      model: claude-sonnet-5
+      input_price_usd_per_million_tokens: 2.0
+      output_price_usd_per_million_tokens: 10.0
+      source: https://platform.claude.com/docs/en/about-claude/pricing
+      note: Introductory pricing through 2026-08-31; standard pricing is listed by Anthropic as $3/$15 per MTok afterward.
+    - label: Claude Sonnet 4.6
+      model: claude-sonnet-4-6
+      input_price_usd_per_million_tokens: 3.0
+      output_price_usd_per_million_tokens: 15.0
+      source: https://platform.claude.com/docs/en/about-claude/models/migration-guide
+    - label: Claude Sonnet 4.5
+      model: claude-sonnet-4-5
+      input_price_usd_per_million_tokens: 3.0
+      output_price_usd_per_million_tokens: 15.0
+      source: https://platform.claude.com/docs/en/about-claude/models/migration-guide
+    - label: Claude Haiku 4.5
+      model: claude-haiku-4-5
+      input_price_usd_per_million_tokens: 1.0
+      output_price_usd_per_million_tokens: 5.0
+      source: https://platform.claude.com/docs/en/about-claude/models/migration-guide

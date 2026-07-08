@@ -1,0 +1,28 @@
+id: llm-decision-multilingual-extraction-001
+name: Multilingual operational extraction
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Extract the renewal action from this Dutch note:
+  "Klant Noordster Labs vraagt om verlenging op 2026-08-15. Factuurbedrag is EUR 1240,50. Juridische goedkeuring ontbreekt nog."
+
+  Required fields:
+  - account_name
+  - renewal_date
+  - amount_eur
+  - blocking_team
+  - locale
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    account_name: Noordster Labs
+    renewal_date: "2026-08-15"
+    blocking_team: legal
+    locale: nl
+  json_field_number_close:
+    amount_eur:
+      expected: 1240.5
+      tolerance: 0.001

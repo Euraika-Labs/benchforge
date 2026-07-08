@@ -1,0 +1,10 @@
+id: swebench-lite-subset
+type: benchmark_harness
+name: SWE-bench Lite subset
+version: external
+language: python
+prompt: "Run selected SWE-bench Lite tasks through the worker."
+timeout_seconds: 28800
+scoring:
+  command: ["benchforge-worker", "run", "--kind", "swebench", "--subset", "lite-small"]
+  parse: swebench

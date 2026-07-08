@@ -1,0 +1,18 @@
+id: benchforge-worker
+name: BenchForge Worker
+kind: benchmark_harness
+adapter_version: 1
+schema_version: 1
+command: benchforge-worker
+capabilities:
+  benchmark_harness: true
+  static_analysis: true
+  security_scanning: true
+  jsonl_events: true
+security:
+  network_required: local
+validation:
+  command: benchforge-worker
+metadata:
+  docs: docs/BENCHMARK_STRATEGY.md
+  setup_note: Uses the bundled Python worker when available; otherwise expects benchforge-worker on PATH.

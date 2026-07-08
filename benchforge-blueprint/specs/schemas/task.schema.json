@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BenchForge Task",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "type",
+    "prompt",
+    "scoring"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "prompt",
+        "function_generation",
+        "repo_patch",
+        "terminal_agent",
+        "benchmark_harness"
+      ]
+    },
+    "language": {
+      "type": "string"
+    },
+    "fixture": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "timeout_seconds": {
+      "type": "integer"
+    },
+    "max_turns": {
+      "type": "integer"
+    },
+    "weight": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 1
+    },
+    "scoring": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parse": {
+          "type": "string"
+        },
+        "expect_exact": {
+          "type": "string"
+        },
+        "expect_contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expect_regex": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expect_not_contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expect_json": {
+          "type": "boolean"
+        },
+        "json_field_equals": {
+          "type": "object"
+        },
+        "json_field_contains": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "json_field_array_exact": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array"
+          }
+        },
+        "json_field_array_exact_ordered": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array"
+          }
+        },
+        "json_field_object_keys_exact": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "json_field_number_close": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "expected"
+            ],
+            "properties": {
+              "expected": {
+                "type": "number"
+              },
+              "tolerance": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "json_field_number_bounds": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "anyOf": [
+              {
+                "required": [
+                  "min"
+                ]
+              },
+              {
+                "required": [
+                  "max"
+                ]
+              }
+            ],
+            "properties": {
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

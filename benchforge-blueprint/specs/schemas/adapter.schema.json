@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BenchForge Adapter Spec",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "adapter_version",
+    "schema_version",
+    "capabilities"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "openai_compatible",
+        "openai_responses",
+        "anthropic_messages",
+        "mistral_api",
+        "azure_openai",
+        "cli_agent",
+        "python_worker",
+        "benchmark_harness",
+        "mock"
+      ]
+    },
+    "adapter_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "default_base_url": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "working_dir": {
+      "type": "string"
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "env": {
+      "type": "object"
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "security": {
+      "type": "object"
+    },
+    "validation": {
+      "type": "object"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

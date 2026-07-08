@@ -1,0 +1,10 @@
+id: code-edit-core
+name: Code Edit Core
+version: 0.1.0
+description: Small deterministic code-edit tasks with real tests for comparing model patch quality.
+tags: [repo_patch, code_edit, python, javascript, fast]
+estimated_runtime: 2-8 minutes
+requires_sandbox: true
+tasks:
+  - tasks/python-config-merge.yaml
+  - tasks/js-retry-delay.yaml

@@ -1,0 +1,10 @@
+id: evalplus-humaneval-plus
+type: benchmark_harness
+name: HumanEval+
+version: external
+language: python
+prompt: "Run HumanEval+ through the EvalPlus worker."
+timeout_seconds: 7200
+scoring:
+  command: ["benchforge-worker", "run", "--kind", "evalplus", "--dataset", "humaneval"]
+  parse: evalplus

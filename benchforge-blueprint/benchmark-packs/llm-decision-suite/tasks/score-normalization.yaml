@@ -1,0 +1,32 @@
+id: llm-decision-score-normalization-001
+name: Score normalization
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only compact JSON.
+
+  Normalize this benchmark summary:
+  - target_id: local-mistral
+  - tasks_total: 50
+  - tasks_passed: 46
+  - failed_tasks: json-repair, evidence-grounding, pii-redaction, strict-format
+
+  Required fields:
+  - target_id
+  - pass_rate
+  - fail_count
+  - risk_area
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    target_id: local-mistral
+    fail_count: 4
+    risk_area: structured_output
+  json_field_number_close:
+    pass_rate:
+      expected: 0.92
+      tolerance: 0.0001
+  json_field_contains:
+    risk_area:
+      - structured

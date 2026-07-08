@@ -1,0 +1,30 @@
+id: llm-structured-schema-repair-001
+name: Repair malformed record
+version: 0.1.0
+type: prompt
+prompt: |
+  Return only valid compact JSON.
+
+  Repair this malformed record without inventing missing values:
+  account=Northstar Labs; seats="84"; renewal=15/08/2026; risk=high; owner_team=success; missing budget_approved
+
+  Required fields:
+  - account
+  - seats
+  - renewal_date
+  - risk
+  - owner_team
+  - budget_approved
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    account: Northstar Labs
+    seats: 84
+    renewal_date: "2026-08-15"
+    risk: high
+    owner_team: success
+    budget_approved: null
+  expect_not_contains:
+    - "15/08/2026"
+    - "true"

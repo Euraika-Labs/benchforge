@@ -1,0 +1,39 @@
+id: llm-practical-privacy-aware-routing-001
+name: Privacy-aware model routing
+version: 0.1.0
+type: prompt
+weight: 1.5
+prompt: |
+  Return only compact JSON.
+
+  Choose a route for a support-ticket extraction workflow.
+
+  Request:
+  "Customer Maya Chen says SSN 123-45-6789 appears in an exported support note. Account acct_17 needs remediation."
+
+  Candidate models:
+  - local-qwen-14b: local runtime, pass_rate 0.91, json_validity 0.94, p95_latency_ms 900, cost_per_1k_calls 0.00
+  - cloud-balanced: cloud runtime, pass_rate 0.97, json_validity 0.99, p95_latency_ms 820, cost_per_1k_calls 0.42
+  - cloud-fast: cloud runtime, pass_rate 0.90, json_validity 0.91, p95_latency_ms 360, cost_per_1k_calls 0.12
+
+  Policy:
+  - raw SSNs must not be sent to cloud models
+  - extraction needs json_validity >= 0.98
+  - after PII redaction, choose the cheapest model that meets quality and latency
+
+  Required fields: preprocess, selected_model_id, fallback_model_id, reason_codes.
+timeout_seconds: 120
+scoring:
+  expect_json: true
+  json_field_equals:
+    preprocess: redact_pii
+    selected_model_id: cloud-balanced
+    fallback_model_id: local-qwen-14b
+  json_field_contains:
+    reason_codes:
+      - pii_redaction
+      - json_validity
+      - cost
+  expect_not_contains:
+    - "123-45-6789"
+    - "cloud-fast is selected"

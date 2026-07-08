@@ -1,0 +1,38 @@
+id: llm-practical
+name: LLM Practical Selection
+version: 0.1.0
+description: Judge-free prompt checks for practical local and cloud model selection.
+tags: [prompt, llm, practical, selection]
+estimated_runtime: 10-22 minutes
+requires_sandbox: false
+calibration:
+  status: pilot
+  sample_size: 0
+  last_reviewed: "2026-07-08"
+  review_scope: contract_review
+  quality_gates:
+    - local_cloud_baseline_pair
+    - provider_confirmed_model_identity
+    - complete_pack_task_coverage
+    - min_3_repetitions_per_task_target
+    - cost_metrics_for_cloud_targets
+    - single_generation_policy
+    - review_before_public_leaderboard
+  notes: Reviewed practical model-selection contracts for first-pass local/cloud comparison; not empirically calibrated against public baselines.
+tasks:
+  - tasks/routing.yaml
+  - tasks/json-repair.yaml
+  - tasks/cost-math.yaml
+  - tasks/safety-boundary.yaml
+  - tasks/entity-resolution.yaml
+  - tasks/contradiction.yaml
+  - tasks/tool-payload.yaml
+  - tasks/decision-memo.yaml
+  - tasks/evidence-grounding.yaml
+  - tasks/pii-redaction.yaml
+  - tasks/model-tradeoff.yaml
+  - tasks/strict-format.yaml
+  - tasks/privacy-aware-routing.yaml
+  - tasks/budget-cap-model-mix.yaml
+  - tasks/regression-triage.yaml
+  - tasks/context-pruning.yaml

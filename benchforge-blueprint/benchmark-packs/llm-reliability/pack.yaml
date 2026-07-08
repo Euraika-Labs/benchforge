@@ -1,0 +1,34 @@
+id: llm-reliability
+name: LLM Reliability
+version: 0.1.0
+description: Judge-free prompt checks for repeatable local and cloud model comparisons under ambiguity, instruction hierarchy, context recall, formatting pressure, multi-step consistency, correction tasks, privacy-preserving evaluation, served-model identity, sample-size caution, confidence-interval uncertainty, SLO gating, and rate-limit retry discipline.
+tags: [prompt, llm, reliability, comparison, quality]
+estimated_runtime: 15-32 minutes
+requires_sandbox: false
+calibration:
+  status: pilot
+  sample_size: 0
+  last_reviewed: "2026-07-08"
+  review_scope: contract_review
+  quality_gates:
+    - local_cloud_baseline_pair
+    - provider_confirmed_model_identity
+    - complete_pack_task_coverage
+    - min_3_repetitions_per_task_target
+    - cost_metrics_for_cloud_targets
+    - single_generation_policy
+    - review_before_public_leaderboard
+  notes: Reviewed reliability contracts for first-pass local/cloud comparison; not empirically calibrated against public baselines.
+tasks:
+  - tasks/ambiguous-requirements.yaml
+  - tasks/instruction-hierarchy.yaml
+  - tasks/context-recall.yaml
+  - tasks/format-pressure.yaml
+  - tasks/multi-step-consistency.yaml
+  - tasks/correction-discipline.yaml
+  - tasks/sample-size-caution.yaml
+  - tasks/confidence-interval-overlap.yaml
+  - tasks/privacy-preserving-eval.yaml
+  - tasks/served-model-identity.yaml
+  - tasks/latency-cost-slo.yaml
+  - tasks/rate-limit-retry.yaml

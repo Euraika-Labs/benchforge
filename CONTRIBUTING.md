@@ -1,34 +1,51 @@
-# Contributing
+# Contributing to BenchForge
 
-Thanks for helping improve this project.
+Thanks for helping make BenchForge a reliable local and cloud LLM benchmark tool. Contributions should improve reproducibility, safety, provider compatibility, or the user workflow.
 
-## Before You Start
+## Development Setup
 
-1. Search existing issues and pull requests.
-2. Open an issue for larger changes before implementing them.
-3. Keep changes focused and easy to review.
+Work from the app source directory:
 
-## Pull Requests
-
-Pull requests should include:
-
-- A clear description of what changed and why.
-- Linked issues when applicable.
-- Tests or verification notes for behavior changes.
-- Screenshots or recordings for UI-facing changes.
-
-## Commit Style
-
-Use short, imperative commit messages with a scope when helpful:
-
-```text
-docs: add security policy
-app: validate target settings
+```bash
+cd benchforge-blueprint
+./scripts/bootstrap.sh
+make doctor
+make test
 ```
 
-## Quality Bar
+Use `make dev` for the Tauri desktop app. The browser-only Vite preview is useful for UI work, but it does not exercise Keychain, subprocesses, downloads, provider calls, or benchmark execution.
 
-- Keep code and documentation readable.
-- Avoid unrelated formatting churn.
-- Do not commit generated secrets, local environment files, or machine-specific paths.
-- Update documentation when behavior changes.
+## Pull Request Expectations
+
+- Keep changes scoped to one workflow or subsystem.
+- Include the commands you ran, such as `make test`, `make cloud-catalog-smoke`, or `make benchmark-readiness`.
+- Include screenshots or a short recording for UI changes.
+- Link related issues, roadmap items, or design notes.
+- Explain any benchmark, scoring, security, or export behavior changes in plain language.
+
+## Coding Guidelines
+
+- Follow the style in nearby files.
+- TypeScript uses 2-space indentation and React function components.
+- Rust follows `rustfmt` defaults and snake_case modules/functions.
+- Python uses 4-space indentation, type hints where useful, and JSON-line worker events.
+- YAML identifiers should be stable, lowercase, and hyphenated.
+
+## Safety Rules
+
+- Never commit API keys, tokens, credentials, downloaded models, report exports, or `.benchforge/` runtime data.
+- Keep target secrets in macOS Keychain or environment references, not target JSON.
+- Treat model outputs, logs, benchmark artifacts, and imported reports as untrusted.
+- Run code and agent benchmarks in isolated workspaces; do not point benchmark tasks at a real user repository.
+
+## Useful Verification Commands
+
+```bash
+make test
+make benchmark-readiness
+make cloud-provider-job-smoke
+make local-runtime-discovery-smoke
+make hf-local-cloud-basics-smoke
+make report-smoke
+make security-smoke
+```
