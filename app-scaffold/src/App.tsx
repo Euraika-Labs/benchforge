@@ -105,6 +105,7 @@ interface ModelPreset {
   outputPrice?: number;
   cacheReadPrice?: number;
   cacheWritePrice?: number;
+  contextLength?: number;
   source?: string;
   note?: string;
 }
@@ -1976,10 +1977,27 @@ function adapterModelPresets(adapter?: Adapter): ModelPreset[] {
       outputPrice: numberFromUnknown(data.output_price_usd_per_million_tokens),
       cacheReadPrice: numberFromUnknown(data.cache_read_price_usd_per_million_tokens ?? data.cached_input_price_usd_per_million_tokens),
       cacheWritePrice: numberFromUnknown(data.cache_write_price_usd_per_million_tokens ?? data.cache_creation_price_usd_per_million_tokens),
+      contextLength: numberFromUnknown(data.context_length ?? data.max_context_length),
       source: typeof data.source === 'string' ? data.source : undefined,
       note: typeof data.note === 'string' ? data.note : undefined,
     }];
   });
+}
+
+function adapterPresetCloudModels(adapter?: Adapter): CloudModel[] {
+  return adapterModelPresets(adapter).map(preset => ({
+    model: preset.model,
+    name: preset.label,
+    provider: adapter?.name ?? 'Cloud provider',
+    inputPriceUsdPerMillionTokens: preset.inputPrice ?? null,
+    outputPriceUsdPerMillionTokens: preset.outputPrice ?? null,
+    cacheReadPriceUsdPerMillionTokens: preset.cacheReadPrice ?? null,
+    cacheWritePriceUsdPerMillionTokens: preset.cacheWritePrice ?? null,
+    contextLength: preset.contextLength ?? null,
+    source: 'adapter-preset',
+    sourceUrl: preset.source,
+    detail: preset.note,
+  }));
 }
 
 function matchingPricedModelPreset(adapter: Adapter | undefined, modelValue: string) {
@@ -2282,7 +2300,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     setBaseUrl(next?.defaultBaseUrl ?? '');
     setApiKey('');
     setApiKeyEnv('');
-    setCloudModels([]);
+    setCloudModels(adapterPresetCloudModels(next));
     setSelectedCloudModel(null);
     setTargetAdvancedOpen(false);
     if (next && options.prefillFirstPreset) {
@@ -2350,7 +2368,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     }
     setModelPresetId(preset.id);
     setSelectedCloudModel(null);
-    setCloudModelQuery(preset.model);
+    setCloudModelQuery('');
     applyModelPresetValues(preset);
     return preset;
   }
@@ -2706,7 +2724,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     setEditingTargetPreserveApiKeyRef(false);
     setEditingTargetPreserveApiKeyEnvRef(false);
     setEditingTargetPendingAutoBenchmarkPackId('');
-    setCloudModels([]);
+    setCloudModels(adapterPresetCloudModels(adapter));
     setSelectedCloudModel(null);
     setTargetAdvancedOpen(false);
     if (!options.preserveAutoBenchmarkScope) {
