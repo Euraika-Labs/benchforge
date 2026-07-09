@@ -58,6 +58,9 @@ jobs:
       - name: Doctor
         run: make doctor
 
+      - name: Dependency audit
+        run: make dependency-audit
+
       - name: Test
         run: make test
 

@@ -127,7 +127,7 @@ run_make_target hf-local-cloud-basics-smoke "Downloads/reuses a tiny public GGUF
 stop_after_failure_if_needed
 
 if [[ "$MODE" == "full" ]]; then
-  run_make_target release-preflight "Verifies license, community files, Tauri bundle metadata, package lock, icon, and release docs before packaging." || FAILED=1
+  run_make_target release-preflight "Verifies license, community files, dependency advisory scope, Tauri bundle metadata, package lock, icon, and release docs before packaging." || FAILED=1
   stop_after_failure_if_needed
 
   run_make_target provider-error-contract-smoke "Verifies normalized runtime provider errors and transport metrics." || FAILED=1

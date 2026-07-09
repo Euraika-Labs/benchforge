@@ -379,7 +379,7 @@ Run these from the repository root.
 | `make report-smoke` | Verify report export content. |
 | `make worker-harness-contract-smoke` | Verify external harness command execution and CSV/JSON/JSONL/JUnit import contracts. |
 | `make smoke-docker` | Verify Docker/Colima scoring, network-off container execution, and Docker image reproducibility metadata. |
-| `make release-preflight` | Verify release hygiene, metadata, bundled resources, lockfiles, icons, and packaging docs. |
+| `make release-preflight` | Verify release hygiene, dependency advisory scope, bundled resources, lockfiles, icons, and packaging docs. |
 | `make package-dmg` | Build a local macOS DMG. |
 | `make verify-dmg` | Verify the latest built DMG checksum, mount it, inspect `BenchForge.app`, and report signature status. |
 | `make install-smoke-dmg` | Copy the app out of the DMG and run first-run, worker, and security-pack smokes. |

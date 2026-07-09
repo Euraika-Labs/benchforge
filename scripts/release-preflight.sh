@@ -123,7 +123,7 @@ if ci_text:
             if isinstance(step, dict) and isinstance(step.get("run"), str):
                 run_commands.append(step["run"])
     joined_runs = "\n".join(run_commands)
-    for command in ("./scripts/bootstrap.sh", "make doctor", "make test", "make benchmark-readiness"):
+    for command in ("./scripts/bootstrap.sh", "make doctor", "make dependency-audit", "make test", "make benchmark-readiness"):
         if command not in joined_runs:
             errors.append(f"GitHub Actions CI workflow must run {command!r}")
     if "brew install llama.cpp" not in joined_runs:
