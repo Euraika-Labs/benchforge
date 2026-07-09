@@ -152,6 +152,12 @@ interface TargetSetupIntent {
   nonce: number;
 }
 
+interface HuggingFaceLocalSetupIntent {
+  benchmarkPackId?: string;
+  targetIds?: string[];
+  nonce: number;
+}
+
 interface ResultsScopeIntent {
   groupId: string;
   runId?: string;
@@ -323,6 +329,7 @@ export default function App() {
   const [runBuilderIntent, setRunBuilderIntent] = useState<RunBuilderIntent | null>(null);
   const [targetRepairIntent, setTargetRepairIntent] = useState<TargetRepairIntent | null>(null);
   const [targetSetupIntent, setTargetSetupIntent] = useState<TargetSetupIntent | null>(null);
+  const [hfLocalSetupIntent, setHfLocalSetupIntent] = useState<HuggingFaceLocalSetupIntent | null>(null);
   const [resultsScopeIntent, setResultsScopeIntent] = useState<ResultsScopeIntent | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -476,6 +483,11 @@ export default function App() {
     setPage('targets');
   }
 
+  function openHuggingFaceLocalSetup(intent: Omit<HuggingFaceLocalSetupIntent, 'nonce'> = {}) {
+    setHfLocalSetupIntent({ ...intent, nonce: Date.now() });
+    setPage('settings');
+  }
+
   function openResultsForGroup(groupId: string, runId?: string) {
     setResultsScopeIntent({ groupId, runId, nonce: Date.now() });
     setPage('results');
@@ -488,7 +500,7 @@ export default function App() {
       case 'benchmarks':
         return <Benchmarks packs={packs} diagnostics={packDiagnostics} onRefresh={refresh} setMessage={setMessage} />;
       case 'runs':
-        return <Runs targets={targets} adapters={adapters} packs={packs} busy={busy} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} runBuilderIntent={runBuilderIntent} onRunBuilderIntentConsumed={() => setRunBuilderIntent(null)} />;
+        return <Runs targets={targets} adapters={adapters} packs={packs} busy={busy} setBusy={setBusy} setMessage={setMessage} refresh={refresh} setPage={setPage} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} openHuggingFaceLocalSetup={openHuggingFaceLocalSetup} runBuilderIntent={runBuilderIntent} onRunBuilderIntentConsumed={() => setRunBuilderIntent(null)} />;
       case 'results':
         return (
           <Results
@@ -509,13 +521,13 @@ export default function App() {
           />
         );
       case 'doctor':
-        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} adapters={adapters} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
+        return <Doctor checks={checks} diagnostics={diagnostics} targets={targets} adapters={adapters} packs={packs} onRefresh={refresh} setBusy={setBusy} setMessage={setMessage} setPage={setPage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} openHuggingFaceLocalSetup={openHuggingFaceLocalSetup} />;
       case 'settings':
-        return <SettingsPage busy={busy} targets={targets} adapters={adapters} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
+        return <SettingsPage busy={busy} targets={targets} adapters={adapters} packs={packs} setBusy={setBusy} setMessage={setMessage} refresh={refresh} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} setupIntent={hfLocalSetupIntent} onSetupIntentConsumed={() => setHfLocalSetupIntent(null)} />;
       default:
-        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} busy={busy} setBusy={setBusy} refresh={refresh} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} />;
+        return <Dashboard targets={targets} adapters={adapters} packs={packs} checks={checks} results={results} runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} busy={busy} setBusy={setBusy} refresh={refresh} setPage={setPage} setMessage={setMessage} openRunBuilder={openRunBuilder} openTargetRepair={openTargetRepair} openTargetSetup={openTargetSetup} openHuggingFaceLocalSetup={openHuggingFaceLocalSetup} />;
     }
-  }, [page, targets, adapters, packs, packDiagnostics, checks, diagnostics, results, runJobs, downloadJobs, serverJobs, artifacts, selectedRunId, selectedResult, artifactText, runBuilderIntent, targetRepairIntent, targetSetupIntent, resultsScopeIntent, busy]);
+  }, [page, targets, adapters, packs, packDiagnostics, checks, diagnostics, results, runJobs, downloadJobs, serverJobs, artifacts, selectedRunId, selectedResult, artifactText, runBuilderIntent, targetRepairIntent, targetSetupIntent, hfLocalSetupIntent, resultsScopeIntent, busy]);
 
   return (
     <div className="shell">
@@ -544,7 +556,7 @@ export default function App() {
   );
 }
 
-function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, busy, setBusy, refresh, setPage, setMessage, openRunBuilder, openTargetRepair, openTargetSetup }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; busy: boolean; setBusy: (busy: boolean) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
+function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloadJobs, serverJobs, busy, setBusy, refresh, setPage, setMessage, openRunBuilder, openTargetRepair, openTargetSetup, openHuggingFaceLocalSetup }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; results: RunResult[]; runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; busy: boolean; setBusy: (busy: boolean) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void; openHuggingFaceLocalSetup: (intent?: Omit<HuggingFaceLocalSetupIntent, 'nonce'>) => void }) {
   const errors = checks.filter(c => c.status === 'error').length;
   const warnings = checks.filter(c => c.status === 'warn').length;
   const passed = results.filter(result => result.status === 'passed').length;
@@ -632,7 +644,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedComparisonPack, targetIds: setupLocalTargetIds });
   }
   function openHuggingFaceLocalModelSetup() {
-    setPage('settings');
+    openHuggingFaceLocalSetup({ benchmarkPackId: recommendedComparisonPack, targetIds: setupCloudTargetIds });
     setMessage(huggingFaceLocalModelSetupMessage(targets, setupCloudTargetIds, recommendedComparisonPack));
   }
   async function runDashboardIntent(intent: RunBuilderIntent, scopeLabelOverride = 'local/cloud comparison') {
@@ -4411,7 +4423,7 @@ function Benchmarks({ packs, diagnostics, onRefresh, setMessage }: { packs: Benc
   </tr>)}</tbody></table></section>;
 }
 
-function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, setPage, openResultsForGroup, openTargetRepair, openTargetSetup, runBuilderIntent, onRunBuilderIntentConsumed }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; busy: boolean; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void; runBuilderIntent: RunBuilderIntent | null; onRunBuilderIntentConsumed: () => void }) {
+function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, setPage, openResultsForGroup, openTargetRepair, openTargetSetup, openHuggingFaceLocalSetup, runBuilderIntent, onRunBuilderIntentConsumed }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; busy: boolean; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; setPage: (page: Page) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void; openHuggingFaceLocalSetup: (intent?: Omit<HuggingFaceLocalSetupIntent, 'nonce'>) => void; runBuilderIntent: RunBuilderIntent | null; onRunBuilderIntentConsumed: () => void }) {
   const [selected, setSelected] = useState<string[]>(['mock-agent']);
   const [selectedPackId, setSelectedPackId] = useState('quick-smoke');
   const [packTasks, setPackTasks] = useState<BenchmarkPackTask[]>([]);
@@ -4483,6 +4495,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     && selectedCloudTargets.length
     && localCloudTargetIds.some(targetId => !selected.includes(targetId)));
   const canOpenLocalSetupFromReadiness = Boolean(selectedCloudTargets.length && !localTargetIds.length);
+  const canOpenHfLocalSetupFromReadiness = Boolean(selectedCloudTargets.length && !localTargetIds.length);
   const canOpenCloudSetupFromReadiness = Boolean(selectedLocalTargets.length && !cloudTargetIds.length);
   const localCloudPanelShortcutPackId = selectedPackSupportsModelComparison ? selectedPackId : undefined;
   const parsedRepetitions = parsePositiveIntegerInRange(repetitions, 'Repetitions', 1, 100);
@@ -4889,6 +4902,10 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: setupBenchmarkPackId, targetIds: selectedCloudTargetIds });
     setMessage(`Detecting local runtimes for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
   }
+  function openHfLocalSetupFromRunBuilder() {
+    openHuggingFaceLocalSetup({ benchmarkPackId: setupBenchmarkPackId, targetIds: selectedCloudTargetIds });
+    setMessage(huggingFaceLocalModelSetupMessage(targets, selectedCloudTargetIds, setupBenchmarkPackId));
+  }
   function openCloudSetupFromRunBuilder() {
     openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: setupBenchmarkPackId, targetIds: selectedLocalTargetIds });
     setMessage(`Preparing cloud target setup for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
@@ -5107,6 +5124,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
         onUseLocalCloud={canApplyLocalCloudPanelShortcut ? () => applyTargetShortcut('local/cloud comparison', localCloudTargetIds, localCloudPanelShortcutPackId) : undefined}
         onUseAllComparable={canApplyAllComparablePanelShortcut ? () => applyTargetShortcut('local/cloud comparison', localCloudTargetIds, localCloudPanelShortcutPackId) : undefined}
         onAddLocalTarget={canOpenLocalSetupFromReadiness ? openLocalSetupFromRunBuilder : undefined}
+        onAddHfLocalModel={canOpenHfLocalSetupFromReadiness ? openHfLocalSetupFromRunBuilder : undefined}
         onAddCloudTarget={canOpenCloudSetupFromReadiness ? openCloudSetupFromRunBuilder : undefined}
         onSetCostCap={applyRecommendedCostCap}
         onRepairPricing={repairRunPricingBlockers}
@@ -5200,6 +5218,7 @@ function LocalCloudRunReadinessPanel({
   onUseLocalCloud,
   onUseAllComparable,
   onAddLocalTarget,
+  onAddHfLocalModel,
   onAddCloudTarget,
   onSetCostCap,
   onRepairPricing,
@@ -5208,11 +5227,12 @@ function LocalCloudRunReadinessPanel({
   onUseLocalCloud?: () => void;
   onUseAllComparable?: () => void;
   onAddLocalTarget?: () => void;
+  onAddHfLocalModel?: () => void;
   onAddCloudTarget?: () => void;
   onSetCostCap?: (value: number) => void;
   onRepairPricing?: (targetIds: string[]) => void;
 }) {
-  const hasActions = Boolean(onUseLocalCloud || onUseAllComparable || onAddLocalTarget || onAddCloudTarget || (readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing));
+  const hasActions = Boolean(onUseLocalCloud || onUseAllComparable || onAddLocalTarget || onAddHfLocalModel || onAddCloudTarget || (readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing));
   return <div className={`preflight-box ${readiness.tone}`}>
     <strong>Comparison Readiness</strong>
     <p>{readiness.headline}</p>
@@ -5221,7 +5241,8 @@ function LocalCloudRunReadinessPanel({
     {hasActions ? <div className="row-actions">
       {onUseLocalCloud ? <button onClick={onUseLocalCloud}><ClipboardCheck size={14} />Use local + cloud</button> : null}
       {onUseAllComparable ? <button onClick={onUseAllComparable}><Boxes size={14} />Use all comparable</button> : null}
-      {onAddLocalTarget ? <button onClick={onAddLocalTarget}><Search size={14} />Add local model</button> : null}
+      {onAddLocalTarget ? <button onClick={onAddLocalTarget}><Search size={14} />Detect runtime</button> : null}
+      {onAddHfLocalModel ? <button onClick={onAddHfLocalModel}><Download size={14} />HF model</button> : null}
       {onAddCloudTarget ? <button onClick={onAddCloudTarget}><Boxes size={14} />Add cloud target</button> : null}
       {readiness.recommendedCostCapUsd != null && onSetCostCap ? <button onClick={() => onSetCostCap(readiness.recommendedCostCapUsd!)}><ShieldCheck size={14} />Set {formatCost(readiness.recommendedCostCapUsd)} cap</button> : null}
       {readiness.pricingRepairTargetIds.length && onRepairPricing ? <button title={errorCategoryRepairHint('pricing_assumption')} onClick={() => onRepairPricing(readiness.pricingRepairTargetIds)}><Pencil size={14} />Add pricing</button> : null}
@@ -6059,7 +6080,7 @@ function Results({ results, targets, adapters, packs, artifacts, selectedRunId, 
   </section>;
 }
 
-function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder, openTargetRepair, openTargetSetup }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
+function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setBusy, setMessage, setPage, openRunBuilder, openTargetRepair, openTargetSetup, openHuggingFaceLocalSetup }: { checks: DoctorCheck[]; diagnostics: DiagnosticRecord[]; targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; setPage: (page: Page) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void; openHuggingFaceLocalSetup: (intent?: Omit<HuggingFaceLocalSetupIntent, 'nonce'>) => void }) {
   const [actionBusy, setActionBusy] = useState('');
   const [actionLog, setActionLog] = useState('');
   const errors = checks.filter(c => c.status === 'error').length;
@@ -6154,7 +6175,7 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
         <td><span className={`pill ${c.status}`}>{c.status}</span></td>
         <td>{c.detail}</td>
         <td className="doctor-remediation">{c.remediation || '-'}</td>
-        <td>{doctorAction(c, targets, cloudSetupAdapterId, recommendedPack, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup)}</td>
+        <td>{doctorAction(c, targets, cloudSetupAdapterId, recommendedPack, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup, openHuggingFaceLocalSetup)}</td>
         <td className="doctor-command">{c.command ? <div className="doctor-command-cell"><code>{c.command}</code><button title="Copy command or path" onClick={() => copyDoctorCommand(c).catch(error => setMessage(String(error)))}><Copy size={14} /></button></div> : '-'}</td>
       </tr>)}</tbody>
     </table>
@@ -6323,14 +6344,14 @@ function cloudKeyDoctorAdapterId(check: DoctorCheck) {
   return check.id.startsWith('cloud-key-') ? check.id.slice('cloud-key-'.length) : '';
 }
 
-function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId: string, benchmarkPackId: string, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
+function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId: string, benchmarkPackId: string, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void, openHuggingFaceLocalSetup: (intent?: Omit<HuggingFaceLocalSetupIntent, 'nonce'>) => void) {
   const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
   if (check.id === 'hf-model-storage') {
     return <button onClick={() => {
-      setPage('settings');
+      openHuggingFaceLocalSetup({ benchmarkPackId, targetIds: recommendedTargets.setupCloudTargetIds });
       setMessage(huggingFaceLocalModelSetupMessage(targets, recommendedTargets.setupCloudTargetIds, benchmarkPackId));
     }}><Settings size={14} />Local</button>;
   }
@@ -6351,7 +6372,7 @@ function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId
       if (repair) {
         openReadinessTargetRepair(targets, 'local', openTargetRepair, setMessage);
       } else {
-        setPage('settings');
+        openHuggingFaceLocalSetup({ benchmarkPackId, targetIds: recommendedTargets.setupCloudTargetIds });
         setMessage(huggingFaceLocalModelSetupMessage(targets, recommendedTargets.setupCloudTargetIds, benchmarkPackId));
       }
     }}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Local'}</button>;
@@ -9990,7 +10011,7 @@ function parseOptionalIntegerInRange(value: string, label: string, min: number, 
   return parsed;
 }
 
-function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, refresh, openRunBuilder, openResultsForGroup, openTargetRepair, openTargetSetup }: { busy: boolean; targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void }) {
+function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, refresh, openRunBuilder, openResultsForGroup, openTargetRepair, openTargetSetup, setupIntent, onSetupIntentConsumed }: { busy: boolean; targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; setBusy: (busy: boolean) => void; setMessage: (message: string) => void; refresh: () => Promise<void>; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void; openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void; setupIntent: HuggingFaceLocalSetupIntent | null; onSetupIntentConsumed: () => void }) {
   const [hf, setHf] = useState<HuggingFaceStatus | null>(null);
   const [token, setToken] = useState('');
   const [repoId, setRepoId] = useState('');
@@ -10080,6 +10101,26 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
     }
     openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: autoBenchmarkPackId, targetIds: settingsComparisonTargets.setupLocalTargetIds });
   }
+
+  useEffect(() => {
+    if (!setupIntent) {
+      return;
+    }
+    const packId = resolveModelBenchmarkPackId(setupIntent.benchmarkPackId, modelBenchmarkPacks, packs);
+    const handoffTargetIds = setupIntent.targetIds?.filter(id => targets.some(target => target.id === id)) ?? [];
+    const handoffCloudTarget = handoffTargetIds
+      .map(id => selectablePricedCloudTargets.find(target => target.id === id))
+      .find((target): target is Target => Boolean(target));
+    setAutoStartAfterDownload(true);
+    setAutoBenchmarkAfterStart(true);
+    setAutoCompareAfterStart(true);
+    setAutoBenchmarkPackId(packId);
+    if (handoffCloudTarget) {
+      setAutoCompareCloudTargetId(handoffCloudTarget.id);
+    }
+    setMessage(huggingFaceLocalModelSetupMessage(targets, handoffTargetIds, packId));
+    onSetupIntentConsumed();
+  }, [setupIntent, modelBenchmarkPacks, packs, targets, selectablePricedCloudTargets, setMessage, onSetupIntentConsumed]);
 
   useEffect(() => {
     if (!selectablePricedCloudTargets.length) {
