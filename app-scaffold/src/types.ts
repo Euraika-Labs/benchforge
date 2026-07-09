@@ -312,6 +312,7 @@ export interface RunResult {
   import_file_count?: number | null;
   import_total_file_count?: number | null;
   import_omitted_file_count?: number | null;
+  import_unsupported_file_count?: number | null;
   import_truncated?: number | null;
   import_truncated_bytes?: number | null;
   provider_model?: string | null;

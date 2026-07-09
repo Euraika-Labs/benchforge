@@ -1204,6 +1204,7 @@ mod tests {
             import_file_count: None,
             import_total_file_count: None,
             import_omitted_file_count: None,
+            import_unsupported_file_count: None,
             import_truncated: None,
             import_truncated_bytes: None,
             provider_model: None,

@@ -2473,6 +2473,7 @@ fn markdown_report_with_scope(
         "Import files",
         "Import total",
         "Import omitted",
+        "Import unsupported",
         "Import truncated",
         "Import truncated bytes",
         "Summary parser",
@@ -2537,6 +2538,7 @@ fn markdown_report_with_scope(
             format_number(result.import_file_count),
             format_number(result.import_total_file_count),
             format_number(result.import_omitted_file_count),
+            format_number(result.import_unsupported_file_count),
             format_number(result.import_truncated),
             format_number(result.import_truncated_bytes),
             markdown_cell(result.summary_source.as_deref().unwrap_or("-")),
@@ -3333,6 +3335,7 @@ fn metric_coverage_json(results: &[store::ResultRecord]) -> Vec<serde_json::Valu
         metric_coverage_row(results, "Import files", |result| result.import_file_count.is_some(), "Counts how many imported result files contributed to the run result."),
         metric_coverage_row(results, "Import total files", |result| result.import_total_file_count.is_some(), "Counts all supported result files discovered before import limits were applied."),
         metric_coverage_row(results, "Import omitted files", |result| result.import_omitted_file_count.is_some(), "Counts supported result files skipped after worker import limits were reached."),
+        metric_coverage_row(results, "Import unsupported files", |result| result.import_unsupported_file_count.is_some(), "Counts unsupported side files ignored during worker directory imports."),
         metric_coverage_row(results, "Import truncated", |result| result.import_truncated.is_some(), "Set by worker imports to show whether imported result evidence was truncated or partially bounded."),
         metric_coverage_row(results, "Import truncated bytes", |result| result.import_truncated_bytes.is_some(), "Counts bytes omitted from imported result evidence when import size limits apply."),
         metric_coverage_row(results, "Summary parser", |result| non_empty_option(result.summary_source.as_deref()), "Identifies the parser that extracted pass/fail summary from imported harness output."),
@@ -3722,7 +3725,7 @@ fn results_csv(results: &[store::ResultRecord]) -> String {
         "output_tokens_per_second,decode_tokens_per_sec,peak_rss_mb,exit_code,harness_exit_code,",
         "stdout_bytes,stderr_bytes,files_changed,lines_added,lines_deleted,commands_observed_count,dangerous_command_hits,",
         "security_finding_count,security_files_scanned,import_file_count,import_total_file_count,import_omitted_file_count,",
-        "import_truncated,import_truncated_bytes,import_format,import_source,summary_source,import_path,",
+        "import_unsupported_file_count,import_truncated,import_truncated_bytes,import_format,import_source,summary_source,import_path,",
         "provider_model,provider_model_source,finish_reason,pricing_assumption,cost_usd,estimated_cost_usd,started_at,finished_at\n"
     ));
     for result in results {
@@ -3781,6 +3784,7 @@ fn results_csv(results: &[store::ResultRecord]) -> String {
             format_option(result.import_file_count),
             format_option(result.import_total_file_count),
             format_option(result.import_omitted_file_count),
+            format_option(result.import_unsupported_file_count),
             format_option(result.import_truncated),
             format_option(result.import_truncated_bytes),
             result.import_format.clone().unwrap_or_default(),
@@ -4731,6 +4735,7 @@ fn export_metric_coverage(results: &[store::ResultRecord]) -> String {
         metric_coverage_row(results, "Import files", |result| result.import_file_count.is_some(), "Counts how many imported result files contributed to the run result."),
         metric_coverage_row(results, "Import total files", |result| result.import_total_file_count.is_some(), "Counts all supported result files discovered before import limits were applied."),
         metric_coverage_row(results, "Import omitted files", |result| result.import_omitted_file_count.is_some(), "Counts supported result files skipped after worker import limits were reached."),
+        metric_coverage_row(results, "Import unsupported files", |result| result.import_unsupported_file_count.is_some(), "Counts unsupported side files ignored during worker directory imports."),
         metric_coverage_row(results, "Import truncated", |result| result.import_truncated.is_some(), "Set by worker imports to show whether imported result evidence was truncated or partially bounded."),
         metric_coverage_row(results, "Import truncated bytes", |result| result.import_truncated_bytes.is_some(), "Counts bytes omitted from imported result evidence when import size limits apply."),
         metric_coverage_row(results, "Summary parser", |result| non_empty_option(result.summary_source.as_deref()), "Identifies the parser that extracted pass/fail summary from imported harness output."),
@@ -5104,7 +5109,7 @@ fn worker_imports_json(results: &[store::ResultRecord]) -> Vec<serde_json::Value
                 "file_count": result.import_file_count.or_else(|| import.get("file_count").and_then(|value| value.as_f64())),
                 "total_file_count": result.import_total_file_count.or_else(|| import.get("total_file_count").and_then(|value| value.as_f64())),
                 "omitted_file_count": result.import_omitted_file_count.or_else(|| import.get("omitted_file_count").and_then(|value| value.as_f64())),
-                "unsupported_file_count": import.get("unsupported_file_count").cloned().unwrap_or(serde_json::Value::Null),
+                "unsupported_file_count": result.import_unsupported_file_count.or_else(|| import.get("unsupported_file_count").and_then(|value| value.as_f64())),
                 "unsupported_files": import.get("unsupported_files").cloned().unwrap_or_else(|| serde_json::json!([])),
                 "truncated": result.import_truncated
                     .map(|value| value != 0.0)
@@ -5127,6 +5132,7 @@ fn result_has_worker_import_provenance(result: &store::ResultRecord) -> bool {
         || result.import_file_count.is_some()
         || result.import_total_file_count.is_some()
         || result.import_omitted_file_count.is_some()
+        || result.import_unsupported_file_count.is_some()
         || result.import_truncated.is_some()
         || result.import_truncated_bytes.is_some()
 }
@@ -5204,9 +5210,14 @@ fn worker_import_file_counts(result: &store::ResultRecord, import: &serde_json::
     if let Some(count) = omitted_file_count {
         parts.push(format!("omitted {}", count));
     }
-    if let Some(count) = import
-        .get("unsupported_file_count")
-        .and_then(|value| value.as_u64())
+    if let Some(count) = result
+        .import_unsupported_file_count
+        .map(|value| value as u64)
+        .or_else(|| {
+            import
+                .get("unsupported_file_count")
+                .and_then(|value| value.as_u64())
+        })
         .filter(|count| *count > 0)
     {
         parts.push(format!("unsupported {}", count));
@@ -17172,6 +17183,7 @@ mod tests {
             import_file_count: None,
             import_total_file_count: None,
             import_omitted_file_count: None,
+            import_unsupported_file_count: None,
             import_truncated: None,
             import_truncated_bytes: None,
             provider_model: Some("provider-model-a".into()),
@@ -19055,6 +19067,7 @@ mod tests {
         imported.import_file_count = Some(2.0);
         imported.import_total_file_count = Some(5.0);
         imported.import_omitted_file_count = Some(3.0);
+        imported.import_unsupported_file_count = Some(2.0);
         imported.import_truncated = Some(1.0);
         imported.import_truncated_bytes = Some(4096.0);
         imported.import_format = Some("junit_xml".into());
@@ -19088,6 +19101,7 @@ mod tests {
         assert_eq!(row["import_file_count"], 2.0);
         assert_eq!(row["import_total_file_count"], 5.0);
         assert_eq!(row["import_omitted_file_count"], 3.0);
+        assert_eq!(row["import_unsupported_file_count"], 2.0);
         assert_eq!(row["import_truncated"], 1.0);
         assert_eq!(row["import_truncated_bytes"], 4096.0);
         assert_eq!(row["import_format"], "junit_xml");
@@ -19097,16 +19111,17 @@ mod tests {
 
         let csv = results_csv(&[imported.clone()]);
         assert!(csv.lines().next().unwrap_or_default().contains(
-            "import_file_count,import_total_file_count,import_omitted_file_count,import_truncated,import_truncated_bytes,import_format"
+            "import_file_count,import_total_file_count,import_omitted_file_count,import_unsupported_file_count,import_truncated"
         ));
         assert!(csv.contains(
-            "2,5,3,1,4096,junit_xml,directory,junit_xml,\"/tmp/benchforge/results,latest\",provider-model-a"
+            "2,5,3,2,1,4096,junit_xml,directory,junit_xml,\"/tmp/benchforge/results,latest\",provider-model-a"
         ));
 
         let report = markdown_report(&[imported.clone()], &[]);
         assert!(report.contains("| Import format | 1 | 0 | Worker harness imports set this when a run was read from external result files. |"));
+        assert!(report.contains("| Import unsupported files | 1 | 0 | Counts unsupported side files ignored during worker directory imports. |"));
         assert!(report.contains("| Import truncated | 1 | 0 | Set by worker imports to show whether imported result evidence was truncated or partially bounded. |"));
-        assert!(report.contains("| run-impo | group-al | worker-target | OpenAI-compatible | llm-core | llm-core-json-001 | passed | - | - | - | - | junit_xml | directory | 2 | 5 | 3 | 1 | 4096 | junit_xml |"));
+        assert!(report.contains("| run-impo | group-al | worker-target | OpenAI-compatible | llm-core | llm-core-json-001 | passed | - | - | - | - | junit_xml | directory | 2 | 5 | 3 | 2 | 1 | 4096 | junit_xml |"));
         assert!(report.contains("## Worker Imports"));
         assert!(report.contains("| run-impo | group-al | llm-core | llm-core-json-001 | worker-target | directory | /tmp/benchforge/results,latest | junit_xml | read 2; total 5; omitted 3; unsupported 2 | summary.xml, latest/results.xml | summary.xml sha256:aaaaaaaaaaaa, latest/results.xml read-sha256:bbbbbbbbbbbb | yes (4096 bytes) | junit_xml |"));
 
@@ -19125,7 +19140,7 @@ mod tests {
         assert_eq!(imports[0]["file_count"], 2.0);
         assert_eq!(imports[0]["total_file_count"], 5.0);
         assert_eq!(imports[0]["omitted_file_count"], 3.0);
-        assert_eq!(imports[0]["unsupported_file_count"], 2);
+        assert_eq!(imports[0]["unsupported_file_count"], 2.0);
         assert_eq!(imports[0]["unsupported_files"][0], "notes.md");
         assert_eq!(imports[0]["truncated"], true);
         assert_eq!(imports[0]["truncated_metric"], 1.0);
@@ -19143,6 +19158,11 @@ mod tests {
         }));
         assert!(coverage.iter().any(|row| {
             row["metric"] == "Import omitted files" && row["present"] == 1 && row["missing"] == 0
+        }));
+        assert!(coverage.iter().any(|row| {
+            row["metric"] == "Import unsupported files"
+                && row["present"] == 1
+                && row["missing"] == 0
         }));
         assert!(coverage.iter().any(|row| {
             row["metric"] == "Import truncated bytes" && row["present"] == 1 && row["missing"] == 0
@@ -19230,7 +19250,13 @@ mod tests {
         assert!(report.contains("| Evaluation time | 1 | 0 | Scoring and repo/code tasks report time spent in the evaluation command after target execution. |"));
         assert!(report.contains("| Commands observed | 1 | 0 | Process-backed repo/code and worker harness runs report benchmark commands BenchForge observed or executed. |"));
         assert!(report.contains("| Peak RSS | 1 | 0 | Process-backed runs report peak resident memory only when BenchForge or a worker can observe it. |"));
-        assert!(report.contains("| run-proc | group-al | code-target | OpenAI-compatible | llm-core | llm-core-json-001 | failed | test_failed | test_failed happened | - | - | - | - | - | - | - | - | - | - | 0 | 1000 ms | 111 ms | 222 ms | 432 ms | 876 ms | 1 | 2 | 2048 | 512 | 1 | 2 | 3 | 2 | 4 |"));
+        let process_run_line = report
+            .lines()
+            .find(|line| line.contains("| run-proc |"))
+            .expect("markdown report should include process run row");
+        assert!(process_run_line.contains("| run-proc | group-al | code-target | OpenAI-compatible | llm-core | llm-core-json-001 | failed | test_failed | test_failed happened |"));
+        assert!(process_run_line
+            .contains("| 0 | 1000 ms | 111 ms | 222 ms | 432 ms | 876 ms | 1 | 2 | 2048 | 512 | 1 | 2 | 3 | 2 | 4 |"));
 
         let analysis: serde_json::Value = serde_json::from_str(
             &results_analysis_json(&[process]).expect("analysis export should serialize"),
@@ -19318,7 +19344,7 @@ mod tests {
             "stdout_bytes,stderr_bytes,files_changed,lines_added,lines_deleted,commands_observed_count,dangerous_command_hits,security_finding_count,security_files_scanned,import_file_count"
         ));
         assert!(csv.lines().next().unwrap_or_default().contains(
-            "import_total_file_count,import_omitted_file_count,import_truncated,import_truncated_bytes"
+            "import_total_file_count,import_omitted_file_count,import_unsupported_file_count,import_truncated,import_truncated_bytes"
         ));
         assert!(csv.contains("target-one,OpenAI-compatible,llm-core"));
         assert!(csv.contains(",150,350,350,900,100,100,25,25,3,12,12,4,125,1,0,0,200,25,25,"));

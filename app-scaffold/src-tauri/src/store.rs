@@ -291,6 +291,7 @@ pub struct ResultRecord {
     pub import_file_count: Option<f64>,
     pub import_total_file_count: Option<f64>,
     pub import_omitted_file_count: Option<f64>,
+    pub import_unsupported_file_count: Option<f64>,
     pub import_truncated: Option<f64>,
     pub import_truncated_bytes: Option<f64>,
     pub provider_model: Option<String>,
@@ -1431,6 +1432,7 @@ pub fn list_results(conn: &Connection) -> Result<Vec<ResultRecord>> {
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_file_count' ORDER BY id DESC LIMIT 1) AS import_file_count,
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_total_file_count' ORDER BY id DESC LIMIT 1) AS import_total_file_count,
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_omitted_file_count' ORDER BY id DESC LIMIT 1) AS import_omitted_file_count,
+           (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_unsupported_file_count' ORDER BY id DESC LIMIT 1) AS import_unsupported_file_count,
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_truncated' ORDER BY id DESC LIMIT 1) AS import_truncated,
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_truncated_bytes' ORDER BY id DESC LIMIT 1) AS import_truncated_bytes,
            (SELECT text_value FROM metrics WHERE run_id = r.id AND name = 'provider_model' ORDER BY id DESC LIMIT 1) AS provider_model,
@@ -1490,6 +1492,7 @@ pub fn list_results_for_group(conn: &Connection, run_group_id: &str) -> Result<V
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_file_count' ORDER BY id DESC LIMIT 1) AS import_file_count,
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_total_file_count' ORDER BY id DESC LIMIT 1) AS import_total_file_count,
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_omitted_file_count' ORDER BY id DESC LIMIT 1) AS import_omitted_file_count,
+           (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_unsupported_file_count' ORDER BY id DESC LIMIT 1) AS import_unsupported_file_count,
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_truncated' ORDER BY id DESC LIMIT 1) AS import_truncated,
            (SELECT value FROM metrics WHERE run_id = r.id AND name = 'import_truncated_bytes' ORDER BY id DESC LIMIT 1) AS import_truncated_bytes,
            (SELECT text_value FROM metrics WHERE run_id = r.id AND name = 'provider_model' ORDER BY id DESC LIMIT 1) AS provider_model,
@@ -1512,7 +1515,7 @@ pub fn list_results_for_group(conn: &Connection, run_group_id: &str) -> Result<V
 }
 
 fn result_from_row(row: &rusqlite::Row<'_>) -> Result<ResultRecord> {
-    let reproducibility_json: String = row.get(57)?;
+    let reproducibility_json: String = row.get(58)?;
     Ok(ResultRecord {
         id: row.get(0)?,
         run_group_id: row.get(1)?,
@@ -1566,18 +1569,19 @@ fn result_from_row(row: &rusqlite::Row<'_>) -> Result<ResultRecord> {
         import_file_count: row.get(42)?,
         import_total_file_count: row.get(43)?,
         import_omitted_file_count: row.get(44)?,
-        import_truncated: row.get(45)?,
-        import_truncated_bytes: row.get(46)?,
-        provider_model: row.get(47)?,
-        provider_model_source: row.get(48)?,
-        finish_reason: row.get(49)?,
-        pricing_assumption: row.get(50)?,
-        import_format: row.get(51)?,
-        import_source: row.get(52)?,
-        import_path: row.get(53)?,
-        summary_source: row.get(54)?,
-        error_code: row.get(55)?,
-        error_message: row.get(56)?,
+        import_unsupported_file_count: row.get(45)?,
+        import_truncated: row.get(46)?,
+        import_truncated_bytes: row.get(47)?,
+        provider_model: row.get(48)?,
+        provider_model_source: row.get(49)?,
+        finish_reason: row.get(50)?,
+        pricing_assumption: row.get(51)?,
+        import_format: row.get(52)?,
+        import_source: row.get(53)?,
+        import_path: row.get(54)?,
+        summary_source: row.get(55)?,
+        error_code: row.get(56)?,
+        error_message: row.get(57)?,
         reproducibility: serde_json::from_str(&reproducibility_json)
             .unwrap_or_else(|_| serde_json::json!({})),
     })
@@ -2051,6 +2055,15 @@ mod tests {
         insert_metric(
             &conn,
             "run-provider-metrics",
+            "import_unsupported_file_count",
+            Some(2.0),
+            None,
+            "worker",
+        )
+        .expect("import unsupported file count should insert");
+        insert_metric(
+            &conn,
+            "run-provider-metrics",
             "import_truncated",
             Some(1.0),
             None,
@@ -2186,6 +2199,7 @@ mod tests {
         assert_eq!(result.import_file_count, Some(2.0));
         assert_eq!(result.import_total_file_count, Some(5.0));
         assert_eq!(result.import_omitted_file_count, Some(3.0));
+        assert_eq!(result.import_unsupported_file_count, Some(2.0));
         assert_eq!(result.import_truncated, Some(1.0));
         assert_eq!(result.import_truncated_bytes, Some(4096.0));
         assert_eq!(result.import_format.as_deref(), Some("jsonl"));

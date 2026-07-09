@@ -8036,6 +8036,7 @@ function buildMetricCoverageRows(results: RunResult[]): MetricCoverageRow[] {
     metricCoverageRow(results, 'Import files', result => typeof result.import_file_count === 'number', 'Counts how many imported result files contributed to the run result.'),
     metricCoverageRow(results, 'Import total files', result => typeof result.import_total_file_count === 'number', 'Counts all supported result files discovered before import limits were applied.'),
     metricCoverageRow(results, 'Import omitted files', result => typeof result.import_omitted_file_count === 'number', 'Counts supported result files skipped after worker import limits were reached.'),
+    metricCoverageRow(results, 'Import unsupported files', result => typeof result.import_unsupported_file_count === 'number', 'Counts unsupported side files ignored during worker directory imports.'),
     metricCoverageRow(results, 'Import truncated', result => typeof result.import_truncated === 'number', 'Set by worker imports to show whether imported result evidence was truncated or partially bounded.'),
     metricCoverageRow(results, 'Import truncated bytes', result => typeof result.import_truncated_bytes === 'number', 'Counts bytes omitted from imported result evidence when import size limits apply.'),
     metricCoverageRow(results, 'Summary parser', result => nonEmptyString(result.summary_source), 'Identifies the parser that extracted pass/fail summary from imported harness output.'),
@@ -8079,6 +8080,10 @@ function formatImportProvenance(result: RunResult) {
   if (typeof result.import_omitted_file_count === 'number' && result.import_omitted_file_count > 0) {
     const omitted = Math.round(result.import_omitted_file_count);
     parts.push(`${omitted} omitted`);
+  }
+  if (typeof result.import_unsupported_file_count === 'number' && result.import_unsupported_file_count > 0) {
+    const unsupported = Math.round(result.import_unsupported_file_count);
+    parts.push(`${unsupported} unsupported`);
   }
   if (typeof result.import_truncated_bytes === 'number' && result.import_truncated_bytes > 0) {
     const bytes = Math.round(result.import_truncated_bytes);
