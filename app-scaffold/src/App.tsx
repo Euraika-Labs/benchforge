@@ -1824,6 +1824,32 @@ function PendingAutomaticBenchmarkPanel({
   </div>;
 }
 
+function TargetSetupPlanPanel({
+  benchmarkPackId,
+  packLabel,
+  targetIds,
+  targets,
+}: {
+  benchmarkPackId: string;
+  packLabel: string;
+  targetIds: string[];
+  targets: Target[];
+}) {
+  const settings = automaticModelBenchmarkSettings(benchmarkPackId);
+  const targetNames = targetLabelsById(targetIds, targets);
+  return <div className="preflight-box setup-plan-box span-two ok">
+    <div className="panel-head"><h2>Automatic setup plan</h2><span className="pill ok">compare</span></div>
+    <p><strong>New target will join the selected comparison.</strong></p>
+    <p>After the target is saved and validated, BenchForge will run the same benchmark pack with the new target plus {previewList(targetNames)}.</p>
+    <div className="mini-grid">
+      <span>{packLabel}</span>
+      <span>{previewList(targetNames, 4)}</span>
+      <span>{settings.repetitions} rep / {settings.warmupRuns} warmup</span>
+      <span>{formatCost(automaticModelBenchmarkMaxCostUsd(benchmarkPackId))} cap</span>
+    </div>
+  </div>;
+}
+
 function automaticPreviewTargetLabel(id: string, plannedTarget: Target | null, targetById: Map<string, Target>) {
   if (plannedTarget && id === plannedTarget.id) {
     return `new: ${plannedTarget.name}`;
@@ -3646,6 +3672,12 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     <div className="panel compact">
       <div className="form-title"><h2>Model Target</h2>{editingTargetId ? <span className="mini-tag">Editing {editingTarget?.name ?? editingTargetId}</span> : null}</div>
       <div className="form-grid">
+        {!editingTargetId && autoBenchmarkAfterAdd && autoBenchmarkTargetIds.length ? <TargetSetupPlanPanel
+          benchmarkPackId={autoBenchmarkPreviewPackId}
+          packLabel={benchmarkPackLabel(autoBenchmarkPreviewPackId, modelBenchmarkPacks)}
+          targetIds={autoBenchmarkTargetIds}
+          targets={targets}
+        /> : null}
         <label>Adapter <select value={adapterId} onChange={event => {
           selectAdapter(event.target.value);
         }}>{runnableAdapters.map(adapter => <option key={adapter.id} value={adapter.id}>{adapter.name}</option>)}</select></label>
