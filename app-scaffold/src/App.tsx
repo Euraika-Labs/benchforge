@@ -495,6 +495,7 @@ export default function App() {
             results={results}
             targets={targets}
             adapters={adapters}
+            packs={packs}
             artifacts={artifacts}
             selectedRunId={selectedRunId}
             setSelectedRunId={setSelectedRunId}
@@ -556,11 +557,12 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const comparisonRows = useMemo(() => buildComparisonRows(modelSelectionResults, adapterById), [modelSelectionResults, adapterById]);
   const taskRows = useMemo(() => buildTaskComparisonRows(modelSelectionResults), [modelSelectionResults]);
   const targetRankings = useMemo(() => buildTargetRankingRows(modelSelectionResults, adapterById), [modelSelectionResults, adapterById]);
+  const packEvidenceIssues = useMemo(() => buildPackEvidenceIssues(modelSelectionResults, packs), [modelSelectionResults, packs]);
   const packCalibrationIssues = useMemo(() => buildPackCalibrationIssues(modelSelectionResults), [modelSelectionResults]);
   const bestTarget = targetRankings[0];
   const dashboardEvidence = useMemo(
-    () => targetRankings.length ? comparisonEvidenceAssessment(comparisonRows, taskRows, targetRankings, packCalibrationIssues) : null,
-    [comparisonRows, taskRows, targetRankings, packCalibrationIssues],
+    () => targetRankings.length ? comparisonEvidenceAssessment(comparisonRows, taskRows, targetRankings, packEvidenceIssues, packCalibrationIssues) : null,
+    [comparisonRows, taskRows, targetRankings, packEvidenceIssues, packCalibrationIssues],
   );
   const weeklyCost = dashboardRecentCost(modelSelectionResults, 7);
   const localCheck = dashboardCheck(checks, 'benchmark-target-local', 'Local model target', 'warn', 'Add a local model target');
@@ -591,9 +593,9 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   );
   const dashboardEvidenceNextRunIntent = useMemo(
     () => dashboardEvidence && !dashboardEvidencePricingRepairTargetIds.length
-      ? evidenceNextRunIntent(dashboardEvidence, targetRankings, targets)
+      ? evidenceNextRunIntent(dashboardEvidence, targetRankings, targets, packs)
       : null,
-    [dashboardEvidence, dashboardEvidencePricingRepairTargetIds, targetRankings, targets],
+    [dashboardEvidence, dashboardEvidencePricingRepairTargetIds, targetRankings, targets, packs],
   );
   const primaryBenchmarkActionLabel = comparisonNeedsPricing ? 'Add cloud pricing' : comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
   const primaryBenchmarkActionDisabled = busy || (comparisonReady && !comparisonNeedsPricing && activeRunInProgress);
@@ -4996,10 +4998,11 @@ function JobMessageCell({ job }: { job: { message: string; error?: string | null
   return <span title={`${message}: ${detail}`}>{message}<span className="muted result-error-detail">{truncateErrorDetail(detail)}</span></span>;
 }
 
-function Results({ results, targets, adapters, artifacts, selectedRunId, setSelectedRunId, selectedResult, artifactText, setArtifactText, setMessage, scopeIntent, openRunBuilder, openTargetRepair }: {
+function Results({ results, targets, adapters, packs, artifacts, selectedRunId, setSelectedRunId, selectedResult, artifactText, setArtifactText, setMessage, scopeIntent, openRunBuilder, openTargetRepair }: {
   results: RunResult[];
   targets: Target[];
   adapters: Adapter[];
+  packs: BenchmarkPack[];
   artifacts: Artifact[];
   selectedRunId: string;
   setSelectedRunId: (id: string) => void;
@@ -5067,13 +5070,14 @@ function Results({ results, targets, adapters, artifacts, selectedRunId, setSele
   const comparisonRows = useMemo(() => buildComparisonRows(visibleResults, adapterById), [visibleResults, adapterById]);
   const modelIdentityWarnings = useMemo(() => buildModelIdentityWarnings(comparisonRows), [comparisonRows]);
   const generationSettingWarnings = useMemo(() => buildGenerationSettingWarnings(comparisonRows), [comparisonRows]);
+  const packEvidenceIssues = useMemo(() => buildPackEvidenceIssues(visibleResults, packs), [visibleResults, packs]);
   const packCalibrationIssues = useMemo(() => buildPackCalibrationIssues(visibleResults), [visibleResults]);
   const runGroupTrendRows = useMemo(() => buildRunGroupTrendRows(comparisonRows), [comparisonRows]);
   const taskRows = useMemo(() => buildTaskComparisonRows(visibleResults), [visibleResults]);
   const taskTargetMatrix = useMemo(() => buildTaskTargetMatrix(visibleResults), [visibleResults]);
   const targetRankingRows = useMemo(() => buildTargetRankingRows(visibleResults, adapterById), [visibleResults, adapterById]);
-  const decision = useMemo(() => buildDecisionSnapshot(comparisonRows, taskRows, targetRankingRows, packCalibrationIssues), [comparisonRows, taskRows, targetRankingRows, packCalibrationIssues]);
-  const resultEvidence = useMemo(() => buildResultEvidenceSummary(comparisonRows, taskRows, targetRankingRows, targets, packCalibrationIssues), [comparisonRows, taskRows, targetRankingRows, targets, packCalibrationIssues]);
+  const decision = useMemo(() => buildDecisionSnapshot(comparisonRows, taskRows, targetRankingRows, packEvidenceIssues, packCalibrationIssues), [comparisonRows, taskRows, targetRankingRows, packEvidenceIssues, packCalibrationIssues]);
+  const resultEvidence = useMemo(() => buildResultEvidenceSummary(comparisonRows, taskRows, targetRankingRows, targets, packs, packEvidenceIssues, packCalibrationIssues), [comparisonRows, taskRows, targetRankingRows, targets, packs, packEvidenceIssues, packCalibrationIssues]);
   const summary = useMemo(() => buildResultSummary(visibleResults), [visibleResults]);
   const metricCoverageRows = useMemo(() => buildMetricCoverageRows(visibleResults), [visibleResults]);
   const errorRows = useMemo(() => buildErrorRows(visibleResults), [visibleResults]);
@@ -5230,6 +5234,7 @@ function Results({ results, targets, adapters, artifacts, selectedRunId, setSele
     </div>
     {filteredScopeWarning ? <div className="preflight-box warn"><strong>Filtered Result Scope</strong><p>{filteredScopeWarning}</p><div className="row-actions"><button onClick={clearResultFilters}><RotateCcw size={14} />Clear filters</button></div></div> : null}
     {resultEvidence ? <ResultEvidencePanel evidence={resultEvidence} onOpenNextRun={openEvidenceNextRun} onRepairPricingAssumptions={openEvidencePricingRepair} /> : null}
+    {packEvidenceIssues.length ? <PackEvidenceWarningsPanel issues={packEvidenceIssues} /> : null}
     {packCalibrationIssues.length ? <PackCalibrationWarningsPanel issues={packCalibrationIssues} /> : null}
     {modelIdentityWarnings.length ? <ModelIdentityWarningsPanel warnings={modelIdentityWarnings} onSelectRun={setSelectedRunId} selectedRunId={selectedRunId} /> : null}
     {generationSettingWarnings.length ? <GenerationSettingWarningsPanel warnings={generationSettingWarnings} onSelectRun={setSelectedRunId} selectedRunId={selectedRunId} /> : null}
@@ -5991,6 +5996,12 @@ interface PackCalibrationIssue {
   notes: string[];
 }
 
+interface PackEvidenceIssue {
+  packId: string;
+  evidenceProfile: string;
+  warnings: string[];
+}
+
 type ComparisonEvidenceGrade = 'insufficient' | 'smoke' | 'directional' | 'comparison_ready';
 type ModelSelectionDecisionStatus = 'insufficient_evidence' | 'collect_more_evidence' | 'select_recommended_target';
 
@@ -6023,6 +6034,7 @@ interface DecisionSnapshot {
   evidenceGrade: ComparisonEvidenceGrade;
   evidenceLabel: string;
   evidenceNote: string;
+  packEvidenceIssues: PackEvidenceIssue[];
   packCalibrationIssues: PackCalibrationIssue[];
   calibrationNote: string;
   minimumNextRun: string;
@@ -6081,6 +6093,16 @@ function PackCalibrationWarningsPanel({ issues }: { issues: PackCalibrationIssue
     <p>{packCalibrationNote(issues)}</p>
     <table className="compact-table"><thead><tr><th>Pack</th><th>Status</th><th>Sample size</th><th>Baselines</th><th>Reviewed</th><th>Missing gates</th><th>Note</th></tr></thead><tbody>
       {issues.map(issue => <tr key={issue.packId}><td>{issue.packId}</td><td>{previewList(issue.statuses)}</td><td>{formatNumberList(issue.sampleSizes)}</td><td>{previewList(issue.baselineModels)}</td><td>{previewList(issue.lastReviewed)}</td><td>{previewList(issue.missingQualityGates)}</td><td>{previewList(issue.notes, 1)}</td></tr>)}
+    </tbody></table>
+  </div>;
+}
+
+function PackEvidenceWarningsPanel({ issues }: { issues: PackEvidenceIssue[] }) {
+  return <div className="preflight-box warn">
+    <strong>Pack Evidence Warnings</strong>
+    <p>{packEvidenceNote(issues)}</p>
+    <table className="compact-table"><thead><tr><th>Pack</th><th>Evidence profile</th><th>Warning</th></tr></thead><tbody>
+      {issues.map(issue => <tr key={issue.packId}><td>{issue.packId}</td><td>{formatEvidenceProfile(issue.evidenceProfile)}</td><td>{previewList(issue.warnings, 1)}</td></tr>)}
     </tbody></table>
   </div>;
 }
@@ -6146,7 +6168,7 @@ function DecisionSnapshotPanel({ decision, onSelectRun, selectedRunId }: { decis
     <div className="panel"><h2>Decision Snapshot</h2><table className="compact-table"><tbody>
       <tr><td>Decision status</td><td><strong>{formatDecisionStatus(decision.decisionStatus)}</strong><div className="muted">{decision.selectedTargetId ? `Selected target: ${decision.selectedTargetId}` : 'No target selected'}</div></td><td>{decision.selectionNote}</td></tr>
       {rows.map(item => <tr key={`${item.label}-${item.row.targetId}`} onClick={() => onSelectRun(item.row.firstRunId)} className={item.row.firstRunId === selectedRunId ? 'selected-row' : ''}><td>{item.label}</td><td><strong>{item.row.targetId}</strong><div className="muted">{decisionRowScope(item.row)}</div></td><td>{item.metric}</td></tr>)}
-    </tbody></table><p className="muted"><strong>Evidence:</strong> {decision.evidenceLabel}. {decision.evidenceNote}</p><p className="muted"><strong>Pack calibration:</strong> {decision.calibrationNote}</p><p className="muted">Minimum next run: {decision.minimumNextRun}</p><p className="muted">{decision.confidenceNote}</p><p className="muted">{decision.coverageNote}</p></div>
+    </tbody></table><p className="muted"><strong>Evidence:</strong> {decision.evidenceLabel}. {decision.evidenceNote}</p><p className="muted"><strong>Pack evidence:</strong> {packEvidenceNote(decision.packEvidenceIssues)}</p><p className="muted"><strong>Pack calibration:</strong> {decision.calibrationNote}</p><p className="muted">Minimum next run: {decision.minimumNextRun}</p><p className="muted">{decision.confidenceNote}</p><p className="muted">{decision.coverageNote}</p></div>
     <div className="panel"><h2>Risk Signal</h2>{decision.weakestTask ? <table className="compact-table"><tbody><tr onClick={() => onSelectRun(decision.weakestTask!.firstRunId)} className={decision.weakestTask.firstRunId === selectedRunId ? 'selected-row' : ''}><td>Weakest task</td><td><strong>{decision.weakestTask.taskId}</strong><div className="muted">{decision.weakestTask.targetId}</div></td><td>{decision.weakestTask.passed}/{decision.weakestTask.runs} passed, p95 {formatMs(decision.weakestTask.p95TimeMs)}</td></tr></tbody></table> : <p className="muted">No task-level risk signal in scope.</p>}<p className="muted">{decision.scoreStabilityNote}</p><p className="muted">Ranking favors pass rate, score, and score stability before speed, cost, and throughput.</p></div>
   </div>;
 }
@@ -6501,6 +6523,64 @@ function buildGenerationSettingWarnings(comparisonRows: ComparisonRow[]): Genera
     || a.issue.localeCompare(b.issue));
 }
 
+function buildPackEvidenceIssues(results: RunResult[], packs: BenchmarkPack[]): PackEvidenceIssue[] {
+  const packIds = unionStrings(results.map(resultPackId).filter(id => id && id !== '-'));
+  if (!packIds.length) {
+    return [];
+  }
+  const packById = new Map(packs.map(pack => [pack.id, pack]));
+  const issues = new Map<string, PackEvidenceIssue>();
+  const snapshotPackIds = new Set<string>();
+
+  for (const result of results) {
+    const packId = resultPackId(result);
+    if (!packId || packId === '-') {
+      continue;
+    }
+    const metadata = resultPackCalibrationMetadata(result);
+    const evidenceProfile = metadata?.evidenceProfile;
+    if (!evidenceProfile) {
+      continue;
+    }
+    snapshotPackIds.add(packId);
+    if (promptEvidenceProfileIsPromptLike(evidenceProfile) && !promptEvidenceProfileIsComparisonReady(evidenceProfile)) {
+      const pack = packById.get(packId);
+      issues.set(packId, {
+        packId,
+        evidenceProfile,
+        warnings: pack?.evidenceWarnings ?? [],
+      });
+    }
+  }
+
+  for (const packId of packIds) {
+    if (snapshotPackIds.has(packId)) {
+      continue;
+    }
+    const pack = packById.get(packId);
+    if (!pack || !pack.taskTypes.includes('prompt')) {
+      continue;
+    }
+    if (!promptEvidenceProfileIsComparisonReady(pack.evidenceProfile)) {
+      issues.set(packId, {
+        packId,
+        evidenceProfile: pack.evidenceProfile,
+        warnings: pack.evidenceWarnings,
+      });
+    }
+  }
+
+  return Array.from(issues.values()).sort((a, b) => a.packId.localeCompare(b.packId));
+}
+
+function promptEvidenceProfileIsPromptLike(profile: string) {
+  return ['connectivity_smoke', 'prompt_smoke', 'weak_prompt_suite', 'thin_prompt_suite', 'prompt_comparison'].includes(profile);
+}
+
+function promptEvidenceProfileIsComparisonReady(profile: string) {
+  return profile === 'prompt_comparison';
+}
+
 function buildPackCalibrationIssues(results: RunResult[]): PackCalibrationIssue[] {
   const byPack = new Map<string, {
     packId: string;
@@ -6662,6 +6742,20 @@ function packCalibrationNote(issues: PackCalibrationIssue[]) {
     return 'All visible packs are marked calibrated and include required model-selection quality gates in the stored run metadata.';
   }
   return `Pack calibration warning: ${issues.length} pack(s) are not fully calibrated for model selection. BenchForge keeps these rankings directional and will not select a winner as comparison-ready until calibration is documented: ${packCalibrationIssueSummary(issues)}.`;
+}
+
+function packEvidenceNote(issues: PackEvidenceIssue[]) {
+  if (!issues.length) {
+    return 'All visible prompt packs have comparison-ready evidence profiles.';
+  }
+  return `Pack evidence warning: ${packEvidenceIssueSummary(issues)}. Run a prompt-comparison pack before using the ranking for model selection.`;
+}
+
+function packEvidenceIssueSummary(issues: PackEvidenceIssue[]) {
+  return issues.slice(0, 4).map(issue => {
+    const warning = issue.warnings[0] ? `: ${issue.warnings[0]}` : '';
+    return `${issue.packId} is ${issue.evidenceProfile}${warning}`;
+  }).join('; ');
 }
 
 function packCalibrationIssueSummary(issues: PackCalibrationIssue[]) {
@@ -7077,7 +7171,7 @@ function buildTaskTargetMatrix(results: RunResult[]): TaskTargetMatrix {
   };
 }
 
-function buildDecisionSnapshot(comparisonRows: ComparisonRow[], taskRows: TaskComparisonRow[], targetRankingRows: TargetRankingRow[], packCalibrationIssues: PackCalibrationIssue[]): DecisionSnapshot | null {
+function buildDecisionSnapshot(comparisonRows: ComparisonRow[], taskRows: TaskComparisonRow[], targetRankingRows: TargetRankingRow[], packEvidenceIssues: PackEvidenceIssue[], packCalibrationIssues: PackCalibrationIssue[]): DecisionSnapshot | null {
   if (!comparisonRows.length || !targetRankingRows.length) {
     return null;
   }
@@ -7103,7 +7197,7 @@ function buildDecisionSnapshot(comparisonRows: ComparisonRow[], taskRows: TaskCo
   const coverageNote = targetCoverageParityNote(targetRankingRows);
   const scoreStabilityNote = targetScoreStabilityNote(targetRankingRows);
   const confidenceNote = targetConfidenceNote(targetRankingRows, comparisonRows, taskRows);
-  const evidence = comparisonEvidenceAssessment(comparisonRows, taskRows, targetRankingRows, packCalibrationIssues);
+  const evidence = comparisonEvidenceAssessment(comparisonRows, taskRows, targetRankingRows, packEvidenceIssues, packCalibrationIssues);
   const decisionStatus = evidenceDecisionStatus(evidence);
   const selectedTargetId = evidenceSelectedTargetId(evidence, targetRankingRows);
   return {
@@ -7122,6 +7216,7 @@ function buildDecisionSnapshot(comparisonRows: ComparisonRow[], taskRows: TaskCo
     evidenceGrade: evidence.grade,
     evidenceLabel: evidence.label,
     evidenceNote: evidence.note,
+    packEvidenceIssues,
     packCalibrationIssues,
     calibrationNote: packCalibrationNote(packCalibrationIssues),
     minimumNextRun: evidence.minimumNextRun,
@@ -7283,11 +7378,11 @@ function targetCoverageParityNote(rows: TargetRankingRow[]) {
   return 'All targets cover the same pack/task slots and run groups in the current scope.';
 }
 
-function buildResultEvidenceSummary(comparisonRows: ComparisonRow[], taskRows: TaskComparisonRow[], targetRows: TargetRankingRow[], targets: Target[], packCalibrationIssues: PackCalibrationIssue[] = []): ResultEvidenceSummary | null {
+function buildResultEvidenceSummary(comparisonRows: ComparisonRow[], taskRows: TaskComparisonRow[], targetRows: TargetRankingRow[], targets: Target[], packs: BenchmarkPack[], packEvidenceIssues: PackEvidenceIssue[] = [], packCalibrationIssues: PackCalibrationIssue[] = []): ResultEvidenceSummary | null {
   if (!comparisonRows.length && !targetRows.length) {
     return null;
   }
-  const evidence = comparisonEvidenceAssessment(comparisonRows, taskRows, targetRows, packCalibrationIssues);
+  const evidence = comparisonEvidenceAssessment(comparisonRows, taskRows, targetRows, packEvidenceIssues, packCalibrationIssues);
   const targetById = new Map(targets.map(target => [target.id, target]));
   const pricingRepairTargetIds = evidencePricingRepairTargetIds(evidence, targetRows, targetById);
 
@@ -7300,12 +7395,12 @@ function buildResultEvidenceSummary(comparisonRows: ComparisonRow[], taskRows: T
     coverageIssues: evidence.coverageIssues,
     risks: evidence.risks,
     minimumNextRun: evidence.minimumNextRun,
-    nextRunIntent: pricingRepairTargetIds.length ? null : evidenceNextRunIntent(evidence, targetRows, targets),
+    nextRunIntent: pricingRepairTargetIds.length ? null : evidenceNextRunIntent(evidence, targetRows, targets, packs),
     pricingRepairTargetIds,
   };
 }
 
-function evidenceNextRunIntent(evidence: ComparisonEvidenceAssessment, targetRows: TargetRankingRow[], targets: Target[]): RunBuilderIntent | null {
+function evidenceNextRunIntent(evidence: ComparisonEvidenceAssessment, targetRows: TargetRankingRow[], targets: Target[], packs: BenchmarkPack[]): RunBuilderIntent | null {
   if (evidence.grade === 'comparison_ready') {
     return null;
   }
@@ -7335,7 +7430,7 @@ function evidenceNextRunIntent(evidence: ComparisonEvidenceAssessment, targetRow
     return null;
   }
   const targetIds = unionStrings(runnableTargets.map(target => target.id));
-  return localCloudRunBuilderIntent(targetIds, evidenceNextPackId(targetRows));
+  return localCloudRunBuilderIntent(targetIds, evidenceNextPackId(evidence, targetRows, packs));
 }
 
 function evidencePricingRepairTargetIds(evidence: ComparisonEvidenceAssessment, targetRows: TargetRankingRow[], targetById: Map<string, Target>) {
@@ -7455,10 +7550,33 @@ function parsePackTaskSlotId(slot: string) {
   };
 }
 
-function evidenceNextPackId(targetRows: TargetRankingRow[]) {
-  const packIds = unionStrings(targetRows.flatMap(row => row.packIds)).filter(id => id && id !== '-');
-  const qualityPackIds = packIds.filter(id => id !== 'llm-connectivity');
-  return qualityPackIds[0] ?? 'llm-reliability';
+function evidenceNextPackId(evidence: ComparisonEvidenceAssessment, targetRows: TargetRankingRow[], packs: BenchmarkPack[]) {
+  const packById = new Map(packs.map(pack => [pack.id, pack]));
+  const packIds = unionStrings(targetRows.flatMap(row => row.packIds))
+    .filter(id => id && id !== '-' && id !== connectivityBenchmarkPackId);
+  const comparisonPackIds = packIds.filter(id => {
+    const pack = packById.get(id);
+    return pack ? promptEvidenceProfileIsComparisonReady(pack.evidenceProfile) : true;
+  });
+  if (comparisonPackIds.length && !evidence.risks.includes('pack_evidence_profile')) {
+    return comparisonPackIds[0];
+  }
+  return preferredEvidenceFollowUpPackId(packs);
+}
+
+function preferredEvidenceFollowUpPackId(packs: BenchmarkPack[]) {
+  const packById = new Map(packs.map(pack => [pack.id, pack]));
+  for (const packId of ['llm-reliability', 'llm-decision-suite', 'llm-practical', 'llm-grounded-context', 'llm-structured-output', 'llm-core', defaultModelComparisonPackId]) {
+    const pack = packById.get(packId);
+    if (pack && pack.taskTypes.includes('prompt') && promptEvidenceProfileIsComparisonReady(pack.evidenceProfile)) {
+      return pack.id;
+    }
+  }
+  const promptComparisonPack = packs.find(pack => pack.taskTypes.includes('prompt') && promptEvidenceProfileIsComparisonReady(pack.evidenceProfile));
+  if (promptComparisonPack) {
+    return promptComparisonPack.id;
+  }
+  return 'llm-reliability';
 }
 
 function formatDecisionStatus(status: ModelSelectionDecisionStatus) {
@@ -7483,7 +7601,7 @@ interface ComparisonEvidenceAssessment {
   minimumNextRun: string;
 }
 
-function comparisonEvidenceAssessment(comparisonRows: ComparisonRow[], taskRows: TaskComparisonRow[], targetRows: TargetRankingRow[], packCalibrationIssues: PackCalibrationIssue[] = []): ComparisonEvidenceAssessment {
+function comparisonEvidenceAssessment(comparisonRows: ComparisonRow[], taskRows: TaskComparisonRow[], targetRows: TargetRankingRow[], packEvidenceIssues: PackEvidenceIssue[] = [], packCalibrationIssues: PackCalibrationIssue[] = []): ComparisonEvidenceAssessment {
   const coverageIssues = targetCoverageIssues(targetRows);
   const overlapTargets = passRateCiOverlapTargetIds(targetRows);
   const costGapTargets = targetCostCoverageGapIds(targetRows);
@@ -7507,6 +7625,9 @@ function comparisonEvidenceAssessment(comparisonRows: ComparisonRow[], taskRows:
   }
   if (connectivityOnly) {
     risks.push('connectivity_pack_only');
+  }
+  if (packEvidenceIssues.length) {
+    risks.push('pack_evidence_profile');
   }
   if (lowTaskRows || lowComparisonRows) {
     risks.push('low_repetitions');
@@ -7568,10 +7689,13 @@ function comparisonEvidenceAssessment(comparisonRows: ComparisonRow[], taskRows:
     };
   }
 
-  if (connectivityOnly || lowTaskRows || lowComparisonRows) {
+  if (connectivityOnly || packEvidenceIssues.length || lowTaskRows || lowComparisonRows) {
     const reasons: string[] = [];
     if (connectivityOnly) {
       reasons.push('only the connectivity pack is in scope');
+    }
+    if (packEvidenceIssues.length) {
+      reasons.push(`pack evidence warning(s): ${packEvidenceIssueSummary(packEvidenceIssues)}`);
     }
     if (lowTaskRows) {
       reasons.push(`${lowTaskRows}/${taskRows.length} task-target row(s) have fewer than ${recommendedTaskRepetitions} repetitions`);
@@ -7613,15 +7737,17 @@ function comparisonEvidenceAssessment(comparisonRows: ComparisonRow[], taskRows:
           ? `Add cache read/write pricing for targets with pricing assumptions (${pricingAssumptionTargets.join(', ')}), then rerun or re-export before using cost rankings as decisive evidence.`
         : modelIdentityWarnings.length
           ? `Confirm each target reports a stable provider-supplied served model id, split mixed served-model results into separate targets if needed, then run a quality pack such as llm-reliability or llm-decision-suite against the same targets with at least ${recommendedTaskRepetitions} repetitions per task/target and 1 warmup.`
-          : generationSettingWarnings.length
+        : generationSettingWarnings.length
             ? `Rerun or filter the same targets and pack with one shared generation policy, such as temperature 0, top_p 1, and a consistent seed policy, with at least ${recommendedTaskRepetitions} repetitions per task/target and 1 warmup.`
+            : packEvidenceIssues.length
+              ? `Run a prompt-comparison pack such as llm-reliability or llm-decision-suite against the same targets with at least ${recommendedTaskRepetitions} repetitions per task/target and 1 warmup, or strengthen the private pack scoring and task breadth.`
             : packCalibrationIssues.length
               ? `Calibrate or review the benchmark pack with baseline evidence, then rerun or filter the same targets with at least ${recommendedTaskRepetitions} repetitions per task/target and 1 warmup before selecting a winner.`
         : `Run a quality pack such as llm-reliability or llm-decision-suite against the same targets with at least ${recommendedTaskRepetitions} repetitions per task/target and 1 warmup.`,
     };
   }
 
-  if (coverageIssues.length || !sameRunGroups || overlapTargets.length || costGapTargets.length || pricingAssumptionTargets.length || modelIdentityWarnings.length || generationSettingWarnings.length || packCalibrationIssues.length) {
+  if (coverageIssues.length || !sameRunGroups || overlapTargets.length || costGapTargets.length || pricingAssumptionTargets.length || modelIdentityWarnings.length || generationSettingWarnings.length || packEvidenceIssues.length || packCalibrationIssues.length) {
     const reasons: string[] = [];
     if (coverageIssues.length) {
       reasons.push(`${coverageIssues.length} target(s) are missing visible pack/task slots`);
@@ -7644,6 +7770,9 @@ function comparisonEvidenceAssessment(comparisonRows: ComparisonRow[], taskRows:
     if (generationSettingWarnings.length) {
       reasons.push(`${generationSettingWarnings.length} generation setting warning(s) indicate mixed deterministic/exploratory sampling`);
     }
+    if (packEvidenceIssues.length) {
+      reasons.push(`pack evidence warning(s): ${packEvidenceIssueSummary(packEvidenceIssues)}`);
+    }
     if (packCalibrationIssues.length) {
       reasons.push(`pack calibration warning(s): ${packCalibrationIssueSummary(packCalibrationIssues)}`);
     }
@@ -7665,8 +7794,10 @@ function comparisonEvidenceAssessment(comparisonRows: ComparisonRow[], taskRows:
             ? `Re-run all compared targets together on the same pack with at least ${recommendedTaskRepetitions} repetitions per task/target.`
           : modelIdentityWarnings.length
             ? 'Confirm each target reports a stable provider-supplied served model id, split mixed served-model results into separate targets if needed, then re-run the same targets and pack.'
-            : generationSettingWarnings.length
+          : generationSettingWarnings.length
               ? 'Rerun or filter the same targets and pack with one shared generation policy, such as temperature 0, top_p 1, and a consistent seed policy.'
+              : packEvidenceIssues.length
+                ? 'Run a prompt-comparison pack such as llm-reliability or llm-decision-suite against the same targets before treating this ranking as model-selection evidence.'
               : packCalibrationIssues.length
                 ? 'Calibrate or review the benchmark pack with documented baseline runs before treating this ranking as a model-selection decision.'
           : 'Increase repetitions or add more discriminating tasks until the leader\'s Wilson interval separates from contenders.',
