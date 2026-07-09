@@ -4832,7 +4832,25 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     setSelectedTaskIds([]);
   }
   const hasReliabilityPack = packs.some(pack => pack.id === 'llm-reliability');
-  return <section><div className="section-head"><h1>Run Builder</h1><div className="actions"><button disabled={busy || !selected.length || activeRunInProgress || !selectedPackId || Boolean(runSettingsError)} onClick={startRun}><Play size={16} />Run pack</button><button disabled={busy || !jobs.some(isJobFinished)} onClick={() => clearFinished().catch(error => setMessage(String(error)))}><Trash2 size={16} />Clear finished</button></div></div>
+  const runPackDisabled = busy || !selected.length || activeRunInProgress || !selectedPackId || Boolean(runSettingsError);
+  const runPackTitle = activeRunInProgress
+    ? 'A benchmark job is already running'
+    : busy
+      ? 'BenchForge is busy'
+      : !selected.length
+        ? 'Select at least one target before running a benchmark pack'
+        : !selectedPackId
+          ? 'Choose a benchmark pack before starting'
+          : runSettingsError
+            ? runSettingsError
+            : `Validate and run ${selected.length} target(s) on ${selectedTaskCount} selected task(s)`;
+  const clearFinishedDisabled = busy || !jobs.some(isJobFinished);
+  const clearFinishedTitle = busy
+    ? 'BenchForge is busy'
+    : jobs.some(isJobFinished)
+      ? 'Clear completed, failed, or cancelled run jobs from this table'
+      : 'No finished run jobs to clear';
+  return <section><div className="section-head"><h1>Run Builder</h1><div className="actions"><button disabled={runPackDisabled} title={runPackTitle} onClick={startRun}><Play size={16} />Run pack</button><button disabled={clearFinishedDisabled} title={clearFinishedTitle} onClick={() => clearFinished().catch(error => setMessage(String(error)))}><Trash2 size={16} />Clear finished</button></div></div>
     <div className="panel compact">
       <div className="form-grid">
         <label>Benchmark pack <select value={selectedPackId} onChange={event => setSelectedPackId(event.target.value)}>{packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name} ({pack.tasks})</option>)}</select></label>
