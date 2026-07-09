@@ -4394,13 +4394,17 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters);
   const cloudTargetIds = cloudTargets.map(target => target.id);
   const pricedCloudTargets = cloudTargets.filter(targetHasInputOutputPricing);
+  const unpricedCloudTargetIds = cloudTargets
+    .filter(target => !targetHasInputOutputPricing(target))
+    .map(target => target.id);
   const preferredCloudTargetIds = (pricedCloudTargets.length ? pricedCloudTargets : cloudTargets).map(target => target.id);
   const skippedUnpricedCloudTargetIds = pricedCloudTargets.length
-    ? cloudTargets.filter(target => !targetHasInputOutputPricing(target)).map(target => target.id)
+    ? unpricedCloudTargetIds
     : [];
   const localCloudTargetIds = localTargetIds.length && preferredCloudTargetIds.length
     ? [...localTargetIds, ...preferredCloudTargetIds]
     : [];
+  const localCloudSelectedUnpricedCloudTargetIds = localCloudTargetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId));
   const modelTargetIds = directTargets.map(target => target.id);
   const selectedTargets = targets.filter(target => selected.includes(target.id));
   const selectedLocalTargets = selectedTargets.filter(target => isLocalModelTarget(target));
@@ -4457,6 +4461,10 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     wallClockTimeoutSeconds: runEstimate?.estimatedWallClockTimeoutSeconds ?? null,
     heavy: Boolean(selectedPack?.heavy),
   });
+  const localCloudShortcutTitle = localCloudShortcutHelp(localCloudTargetIds, localCloudSelectedUnpricedCloudTargetIds, skippedUnpricedCloudTargetIds, targets);
+  const localCloudReliabilityShortcutTitle = localCloudShortcutHelp(localCloudTargetIds, localCloudSelectedUnpricedCloudTargetIds, skippedUnpricedCloudTargetIds, targets, 'Reliability');
+  const allModelsShortcutTitle = targetShortcutHelp('all model targets', modelTargetIds, modelTargetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId)), targets);
+  const cloudShortcutTitle = targetShortcutHelp('cloud targets', cloudTargetIds, cloudTargetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId)), targets);
 
   useEffect(() => {
     setSelected(current => {
@@ -4567,7 +4575,13 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       setSelected(intent.targetIds);
       setSelectedPackId(intent.benchmarkPackId ?? packId);
       applyRunBuilderIntentSettings(intent, setRepetitions, setWarmupRuns, setConcurrency, setMaxCostUsd);
-      setMessage(`Run Builder preselected ${intent.targetIds.length} local/cloud model target(s), ${benchmarkPackLabel(packId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
+      const selectedUnpricedCloudTargetIds = intent.targetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId));
+      const pricingNote = selectedUnpricedCloudTargetIds.length
+        ? ` Add pricing for ${previewList(targetLabelsById(selectedUnpricedCloudTargetIds, targets))} before running with the cap.`
+        : skippedUnpricedCloudTargetIds.length
+          ? ` Skipped unpriced cloud target(s): ${previewList(targetLabelsById(skippedUnpricedCloudTargetIds, targets))}.`
+          : '';
+      setMessage(`Run Builder preselected ${intent.targetIds.length} local/cloud model target(s), ${benchmarkPackLabel(packId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap.${pricingNote}`);
       return;
     }
     if (!modelTargetIds.length) {
@@ -4592,7 +4606,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     const scopeLabel = localTargetIds.length ? 'local model' : 'cloud model';
     const capNote = includesCloudTarget ? `, ${formatCost(maxCost)} cap` : '';
     setMessage(`Run Builder preselected ${modelTargetIds.length} ${scopeLabel} target(s), ${benchmarkPackLabel(packId)}, ${settings.repetitions} repetition(s), ${settings.warmupRuns} warmup(s)${capNote}`);
-  }, [runBuilderIntent, packs, localCloudTargetIds, modelTargetIds, targets, cloudTargetIds, localTargetIds, selected, selectedPackId, repetitions, warmupRuns, concurrency, maxCostUsd, setMessage]);
+  }, [runBuilderIntent, packs, localCloudTargetIds, modelTargetIds, targets, cloudTargetIds, localTargetIds, unpricedCloudTargetIds, skippedUnpricedCloudTargetIds, selected, selectedPackId, repetitions, warmupRuns, concurrency, maxCostUsd, setMessage]);
 
   useEffect(() => {
     if (!pendingTaskIntent || pendingTaskIntent.packId !== selectedPackId || tasksLoading || taskError || !packTasks.length) {
@@ -4906,9 +4920,12 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       setRepetitions('3');
       setWarmupRuns('1');
       setConcurrency(String(Math.min(2, Math.max(1, targetIds.length))));
+      const selectedUnpricedCloudTargetIds = targetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId));
       const costCapNote = includesCloudTarget ? ` and ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap` : '';
-      const pricingNote = skippedUnpricedCloudTargetIds.length
-        ? ` Skipped unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.`
+      const pricingNote = selectedUnpricedCloudTargetIds.length
+        ? ` Add pricing for ${previewList(targetLabelsById(selectedUnpricedCloudTargetIds, targets))} before running with the cap.`
+        : skippedUnpricedCloudTargetIds.length
+        ? ` Skipped unpriced cloud target(s): ${previewList(targetLabelsById(skippedUnpricedCloudTargetIds, targets))}.`
         : pricedCloudTargets.length
           ? ' Selected priced cloud target(s) for cost-capped comparison.'
           : includesCloudTarget
@@ -4918,7 +4935,11 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       return;
     }
     const costCapNote = includesCloudTarget ? ` with ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap` : '';
-    setMessage(`Selected ${targetIds.length} ${label} target(s)${packNote}${costCapNote}`);
+    const selectedUnpricedCloudTargetIds = targetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId));
+    const pricingNote = selectedUnpricedCloudTargetIds.length
+      ? `. Add pricing for ${previewList(targetLabelsById(selectedUnpricedCloudTargetIds, targets))} before running with the cap`
+      : '';
+    setMessage(`Selected ${targetIds.length} ${label} target(s)${packNote}${costCapNote}${pricingNote}`);
   }
   function applyRecommendedCostCap(value: number) {
     setMaxCostUsd(String(value));
@@ -5017,11 +5038,14 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       {runScaleWarning ? <div className="preflight-box warn"><strong>Large Run</strong><p>{runScaleWarning}</p></div> : null}
       {runSettingsError ? <p className="muted">{runSettingsError}</p> : <RunEstimatePanel estimate={runEstimate} error={estimateError} fallbackRuns={estimatedRuns} fallbackWarmups={estimatedWarmups} selectedTargets={selected.length} packTasks={selectedTaskCount} repetitions={parsedRepetitions.value ?? 1} concurrency={parsedConcurrency.value ?? 1} maxCostUsd={parsedMaxCostUsd.value} />}
       <div className="row-actions target-shortcuts">
-        <button disabled={!modelTargetIds.length} onClick={() => applyTargetShortcut('model', modelTargetIds)}><Boxes size={14} />All models</button>
-        <button disabled={!localTargetIds.length} onClick={() => applyTargetShortcut('local', localTargetIds)}><TerminalSquare size={14} />Local</button>
-        <button disabled={!cloudTargetIds.length} onClick={() => applyTargetShortcut('cloud', cloudTargetIds)}><Database size={14} />Cloud</button>
-        <button disabled={!localCloudTargetIds.length} title={localCloudTargetIds.length ? 'Select all local targets and priced cloud targets when available' : 'Add one enabled local model target and one enabled cloud model target'} onClick={() => applyTargetShortcut('local/cloud comparison', localCloudTargetIds)}><ClipboardCheck size={14} />Local + cloud</button>
-        <button disabled={!localCloudTargetIds.length || !hasReliabilityPack} title={localCloudTargetIds.length ? 'Select all local targets and priced cloud targets for the reliability pack' : 'Add one enabled local model target and one enabled cloud model target'} onClick={() => applyTargetShortcut('local/cloud reliability', localCloudTargetIds, 'llm-reliability')}><FlaskConical size={14} />Reliability</button>
+        <button disabled={!modelTargetIds.length} title={allModelsShortcutTitle} onClick={() => applyTargetShortcut('model', modelTargetIds)}><Boxes size={14} />All models</button>
+        <button disabled={!localTargetIds.length} title={localTargetIds.length ? 'Select all enabled local model targets' : 'Add one enabled local model target'} onClick={() => applyTargetShortcut('local', localTargetIds)}><TerminalSquare size={14} />Local</button>
+        <button disabled={!cloudTargetIds.length} title={cloudShortcutTitle} onClick={() => applyTargetShortcut('cloud', cloudTargetIds)}><Database size={14} />Cloud</button>
+        <button disabled={!localCloudTargetIds.length} title={localCloudShortcutTitle} onClick={() => applyTargetShortcut('local/cloud comparison', localCloudTargetIds)}><ClipboardCheck size={14} />Local + cloud</button>
+        <button disabled={!localCloudTargetIds.length || !hasReliabilityPack} title={hasReliabilityPack ? localCloudReliabilityShortcutTitle : 'Reliability benchmark pack is not available'} onClick={() => applyTargetShortcut('local/cloud reliability', localCloudTargetIds, 'llm-reliability')}><FlaskConical size={14} />Reliability</button>
+        {localCloudTargetIds.length ? <span className={`mini-tag ${localCloudSelectedUnpricedCloudTargetIds.length ? 'warn' : ''}`} title={localCloudShortcutTitle}>
+          {localCloudSelectedUnpricedCloudTargetIds.length ? 'pricing needed' : 'cost-ready'}
+        </span> : null}
       </div>
       <div className="checks target-checks">{targets.map(target => {
         const checked = selected.includes(target.id);
@@ -5110,6 +5134,42 @@ function LocalCloudRunReadinessPanel({
       {readiness.pricingRepairTargetIds.length && onRepairPricing ? <button title={errorCategoryRepairHint('pricing_assumption')} onClick={() => onRepairPricing(readiness.pricingRepairTargetIds)}><Pencil size={14} />Add pricing</button> : null}
     </div> : null}
   </div>;
+}
+
+function targetShortcutHelp(label: string, targetIds: string[], unpricedCloudTargetIds: string[], targets: Target[]) {
+  if (!targetIds.length) {
+    return `Add enabled ${label} before using this shortcut`;
+  }
+  const targetById = new Map(targets.map(target => [target.id, target]));
+  const includesCloudTarget = targetIds.some(targetId => {
+    const target = targetById.get(targetId);
+    return Boolean(target && isCloudModelTarget(target));
+  });
+  if (unpricedCloudTargetIds.length) {
+    return `Select ${label} and set a max-cost cap. Add input/output pricing for ${previewList(targetLabelsById(unpricedCloudTargetIds, targets))} before running with the cap.`;
+  }
+  return includesCloudTarget
+    ? `Select ${label} and set a ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap`
+    : `Select ${label}`;
+}
+
+function localCloudShortcutHelp(
+  targetIds: string[],
+  selectedUnpricedCloudTargetIds: string[],
+  skippedUnpricedCloudTargetIds: string[],
+  targets: Target[],
+  packName = 'model comparison',
+) {
+  if (!targetIds.length) {
+    return 'Add one enabled local model target and one enabled cloud model target';
+  }
+  if (selectedUnpricedCloudTargetIds.length) {
+    return `Select local and cloud targets for ${packName}. Add input/output pricing for ${previewList(targetLabelsById(selectedUnpricedCloudTargetIds, targets))} before running with the max-cost cap.`;
+  }
+  if (skippedUnpricedCloudTargetIds.length) {
+    return `Select local targets and priced cloud targets for ${packName}; skips unpriced cloud target(s): ${previewList(targetLabelsById(skippedUnpricedCloudTargetIds, targets))}.`;
+  }
+  return `Select local and priced cloud targets for ${packName} with a ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap`;
 }
 
 function RunValidationBlockerPanel({ blockers, targets, onRepair }: { blockers: TargetValidation[]; targets: Target[]; onRepair: (blocker: TargetValidation) => void }) {
