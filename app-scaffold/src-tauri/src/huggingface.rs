@@ -15,6 +15,42 @@ use crate::{adapters, paths, safety, store};
 
 const KEYCHAIN_SERVICE: &str = "benchforge/huggingface";
 const DISK_SPACE_WARNING_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const STARTER_GGUF_MODELS: &[StarterGgufModel] = &[
+    StarterGgufModel {
+        repo_id: "ggml-org/tinygemma3-GGUF",
+        author: "ggml-org",
+        recommended_file: "tinygemma3-Q8_0.gguf",
+        downloads: 0,
+        likes: 0,
+        tags: &["benchforge-starter", "tiny", "smoke", "gguf", "local"],
+    },
+    StarterGgufModel {
+        repo_id: "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+        author: "Qwen",
+        recommended_file: "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        downloads: 0,
+        likes: 0,
+        tags: &["benchforge-starter", "qwen", "small", "instruct", "gguf"],
+    },
+    StarterGgufModel {
+        repo_id: "bartowski/SmolLM2-135M-Instruct-GGUF",
+        author: "bartowski",
+        recommended_file: "SmolLM2-135M-Instruct-Q4_0.gguf",
+        downloads: 0,
+        likes: 0,
+        tags: &["benchforge-starter", "smollm", "small", "instruct", "gguf"],
+    },
+];
+
+#[derive(Debug, Clone, Copy)]
+struct StarterGgufModel {
+    repo_id: &'static str,
+    author: &'static str,
+    recommended_file: &'static str,
+    downloads: u64,
+    likes: u64,
+    tags: &'static [&'static str],
+}
 
 #[derive(Debug, Clone)]
 struct DownloadPlan {
@@ -558,7 +594,14 @@ pub fn install_tools(request: InstallToolsRequest) -> Result<InstallToolsResultD
 
 pub fn search_models(request: SearchModelsRequest) -> Result<Vec<HuggingFaceModelDto>, String> {
     let limit = request.limit.clamp(1, 50);
+    let result_limit = usize::from(limit);
     let sort = normalize_model_sort(&request.sort);
+    let query = request
+        .query
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
     let mut url = format!(
         "https://huggingface.co/api/models?limit={}&sort={}&direction=-1&full=true",
         limit, sort
@@ -566,20 +609,28 @@ pub fn search_models(request: SearchModelsRequest) -> Result<Vec<HuggingFaceMode
     if request.gguf_only {
         url.push_str("&filter=gguf");
     }
-    if let Some(query) = request
-        .query
-        .as_deref()
-        .map(str::trim)
-        .filter(|query| !query.is_empty())
-    {
+    if !query.is_empty() {
         url.push_str("&search=");
-        url.push_str(&url_encode(query));
+        url.push_str(&url_encode(&query));
     }
 
-    let raw = get_hf_api_url(&url)?;
+    let starters = if request.gguf_only {
+        starter_gguf_models(&query, result_limit)
+    } else {
+        Vec::new()
+    };
+
+    let raw = match get_hf_api_url(&url) {
+        Ok(raw) => raw,
+        Err(_) if !starters.is_empty() => return Ok(starters),
+        Err(err) => return Err(err),
+    };
     let json: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|err| format!("invalid Hugging Face response: {}", err))?;
     if let Some(error) = json.get("error").and_then(|value| value.as_str()) {
+        if !starters.is_empty() {
+            return Ok(starters);
+        }
         return Err(error.to_string());
     }
     let items = json
@@ -591,7 +642,86 @@ pub fn search_models(request: SearchModelsRequest) -> Result<Vec<HuggingFaceMode
             models.push(model);
         }
     }
+    merge_starter_models(&mut models, starters);
+    models.truncate(result_limit);
     Ok(models)
+}
+
+fn starter_gguf_models(query: &str, limit: usize) -> Vec<HuggingFaceModelDto> {
+    let normalized_query = query.trim().to_lowercase();
+    STARTER_GGUF_MODELS
+        .iter()
+        .filter(|starter| starter_matches_query(starter, &normalized_query))
+        .take(limit)
+        .map(starter_model_dto)
+        .collect()
+}
+
+fn starter_matches_query(starter: &StarterGgufModel, query: &str) -> bool {
+    query.is_empty()
+        || starter.repo_id.to_lowercase().contains(query)
+        || starter.author.to_lowercase().contains(query)
+        || starter.recommended_file.to_lowercase().contains(query)
+        || starter
+            .tags
+            .iter()
+            .any(|tag| tag.to_lowercase().contains(query))
+}
+
+fn starter_model_dto(starter: &StarterGgufModel) -> HuggingFaceModelDto {
+    HuggingFaceModelDto {
+        repo_id: starter.repo_id.into(),
+        author: Some(starter.author.into()),
+        url: format!("https://huggingface.co/{}", starter.repo_id),
+        downloads: starter.downloads,
+        likes: starter.likes,
+        trending_score: None,
+        pipeline_tag: Some("text-generation".into()),
+        library_name: Some("BenchForge starter".into()),
+        gated: false,
+        last_modified: None,
+        tags: starter.tags.iter().map(|tag| (*tag).into()).collect(),
+        gguf_files: vec![starter.recommended_file.into()],
+        recommended_file: Some(starter.recommended_file.into()),
+    }
+}
+
+fn merge_starter_models(models: &mut Vec<HuggingFaceModelDto>, starters: Vec<HuggingFaceModelDto>) {
+    for starter in starters {
+        if let Some(existing) = models
+            .iter_mut()
+            .find(|model| model.repo_id == starter.repo_id)
+        {
+            if existing.recommended_file.is_none() {
+                existing.recommended_file = starter.recommended_file.clone();
+            }
+            if existing.gguf_files.is_empty() {
+                existing.gguf_files = starter.gguf_files.clone();
+            }
+            for file in &starter.gguf_files {
+                if !existing
+                    .gguf_files
+                    .iter()
+                    .any(|candidate| candidate == file)
+                {
+                    existing.gguf_files.push(file.clone());
+                }
+            }
+            if existing.library_name.is_none() {
+                existing.library_name = starter.library_name.clone();
+            }
+            if existing.pipeline_tag.is_none() {
+                existing.pipeline_tag = starter.pipeline_tag.clone();
+            }
+            for tag in &starter.tags {
+                if !existing.tags.iter().any(|candidate| candidate == tag) {
+                    existing.tags.push(tag.clone());
+                }
+            }
+        } else {
+            models.push(starter);
+        }
+    }
 }
 
 pub fn inspect_model(request: ModelRequest) -> Result<HuggingFaceModelFilesDto, String> {
@@ -3612,6 +3742,52 @@ mod tests {
             hf_model_api_url("org name/model GGUF", Some("release candidate")),
             "https://huggingface.co/api/models/org%20name/model%20GGUF?full=true&revision=release+candidate"
         );
+    }
+
+    #[test]
+    fn starter_gguf_models_cover_blank_and_query_search() {
+        let blank = starter_gguf_models("", 10);
+        assert!(blank
+            .iter()
+            .any(|model| model.repo_id == "ggml-org/tinygemma3-GGUF"));
+
+        let qwen = starter_gguf_models("qwen", 10);
+        assert_eq!(qwen[0].repo_id, "Qwen/Qwen2.5-0.5B-Instruct-GGUF");
+        assert_eq!(
+            qwen[0].recommended_file.as_deref(),
+            Some("qwen2.5-0.5b-instruct-q4_k_m.gguf")
+        );
+
+        assert!(starter_gguf_models("not-a-starter-model", 10).is_empty());
+    }
+
+    #[test]
+    fn starter_gguf_models_enrich_live_rows_without_duplicates() {
+        let mut live = vec![HuggingFaceModelDto {
+            repo_id: "ggml-org/tinygemma3-GGUF".into(),
+            author: Some("ggml-org".into()),
+            url: "https://huggingface.co/ggml-org/tinygemma3-GGUF".into(),
+            downloads: 42,
+            likes: 7,
+            trending_score: Some(1.0),
+            pipeline_tag: None,
+            library_name: None,
+            gated: false,
+            last_modified: None,
+            tags: Vec::new(),
+            gguf_files: Vec::new(),
+            recommended_file: None,
+        }];
+
+        merge_starter_models(&mut live, starter_gguf_models("tinygemma", 10));
+
+        assert_eq!(live.len(), 1);
+        assert_eq!(live[0].downloads, 42);
+        assert_eq!(
+            live[0].recommended_file.as_deref(),
+            Some("tinygemma3-Q8_0.gguf")
+        );
+        assert!(live[0].tags.iter().any(|tag| tag == "benchforge-starter"));
     }
 
     #[test]
