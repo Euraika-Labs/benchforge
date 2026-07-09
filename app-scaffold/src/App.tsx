@@ -195,6 +195,7 @@ const defaultComparisonMaxCostUsd = 1.0;
 const connectivityBenchmarkPackId = 'llm-connectivity';
 const defaultModelComparisonPackId = 'llm-basics';
 const preferredCloudSetupAdapterIds = ['openai', 'anthropic', 'mistral', 'gemini', 'openrouter', 'azure-openai', 'openai-compatible'];
+const emptyDoctorChecks: DoctorCheck[] = [];
 const fallbackModelBenchmarkPacks = [
   { id: 'llm-basics', label: 'LLM Basics' },
   { id: 'llm-core', label: 'LLM Core' },
@@ -571,6 +572,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const packCheck = dashboardCheck(checks, 'benchmark-packs', 'Benchmark packs', packs.length ? 'ok' : 'error', packs.length ? `${packs.length} packs available` : 'No packs found');
   const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
   const sandboxCheck = dashboardSandboxCheck(checks);
+  const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters, checks);
   const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
   const recommendedTargetIds = recommendedTargets.runTargetIds;
   const allComparableTargetIds = recommendedTargets.allRunTargetIds;
@@ -611,7 +613,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     setMessage('Detecting local runtimes from Dashboard');
   }
   function openCloudTargetSetup() {
-    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: recommendedComparisonPack });
+    openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedComparisonPack });
   }
   async function runDashboardIntent(intent: RunBuilderIntent, scopeLabelOverride = 'local/cloud comparison') {
     const benchmarkPackId = intent.benchmarkPackId ?? recommendedComparisonPack;
@@ -1280,13 +1282,80 @@ function stringValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function preferredCloudSetupAdapterId(adapters: Adapter[]) {
-  const availableIds = new Set(adapters.map(adapter => adapter.id));
-  const preferred = preferredCloudSetupAdapterIds.find(id => availableIds.has(id));
-  if (preferred) {
-    return preferred;
+function cloudSetupAdapterCandidates(adapters: Adapter[]) {
+  const adapterById = new Map(adapters.map(adapter => [adapter.id, adapter]));
+  const preferred = preferredCloudSetupAdapterIds
+    .map(id => adapterById.get(id))
+    .filter((adapter): adapter is Adapter => Boolean(adapter));
+  const preferredIds = new Set(preferred.map(adapter => adapter.id));
+  const remaining = adapters.filter(adapter => !preferredIds.has(adapter.id) && adapterLooksLikeCloudSetup(adapter));
+  return [...preferred, ...remaining];
+}
+
+function adapterLooksLikeCloudSetup(adapter: Adapter) {
+  return ['openai_compatible', 'openai_responses', 'anthropic_messages', 'mistral_api', 'azure_openai'].includes(adapter.kind)
+    || cloudModelAdapters.has(adapter.id);
+}
+
+function preferredCloudSetupAdapterFromDoctorChecks(adapters: Adapter[], checks: DoctorCheck[]) {
+  const readyAdapterIds = new Set(
+    checks
+      .filter(check => check.status === 'ok')
+      .map(cloudKeyDoctorAdapterId)
+      .filter(Boolean),
+  );
+  if (!readyAdapterIds.size) {
+    return '';
   }
-  return adapters.find(adapter => ['openai_compatible', 'openai_responses', 'anthropic_messages', 'mistral_api', 'azure_openai'].includes(adapter.kind))?.id ?? 'openrouter';
+  return cloudSetupAdapterCandidates(adapters).find(adapter => readyAdapterIds.has(adapter.id))?.id ?? '';
+}
+
+function preferredCloudSetupAdapterId(adapters: Adapter[], readyAdapterId = '') {
+  const availableIds = new Set(adapters.map(adapter => adapter.id));
+  if (readyAdapterId && availableIds.has(readyAdapterId)) {
+    return readyAdapterId;
+  }
+  return cloudSetupAdapterCandidates(adapters)[0]?.id ?? 'openrouter';
+}
+
+function usePreferredCloudSetupAdapterId(adapters: Adapter[], checks?: DoctorCheck[]) {
+  const doctorChecks = checks ?? emptyDoctorChecks;
+  const doctorPreferredAdapterId = useMemo(
+    () => preferredCloudSetupAdapterFromDoctorChecks(adapters, doctorChecks),
+    [adapters, doctorChecks],
+  );
+  const [statusPreferredAdapterId, setStatusPreferredAdapterId] = useState('');
+
+  useEffect(() => {
+    if (doctorPreferredAdapterId) {
+      setStatusPreferredAdapterId('');
+      return;
+    }
+    let cancelled = false;
+    const candidates = cloudSetupAdapterCandidates(adapters)
+      .filter(adapter => adapterNeedsApiKey(adapter, adapter.defaultBaseUrl ?? ''));
+    setStatusPreferredAdapterId('');
+    if (!candidates.length) {
+      return;
+    }
+    Promise.all(candidates.map(async adapter => {
+      try {
+        const status = await providerApiKeyStatus(providerKeychainId(adapter, adapter.defaultBaseUrl ?? ''));
+        return status.available ? adapter.id : '';
+      } catch {
+        return '';
+      }
+    })).then(adapterIds => {
+      if (!cancelled) {
+        setStatusPreferredAdapterId(adapterIds.find(Boolean) ?? '');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [adapters, doctorPreferredAdapterId]);
+
+  return preferredCloudSetupAdapterId(adapters, doctorPreferredAdapterId || statusPreferredAdapterId);
 }
 
 function dashboardCheck(checks: DoctorCheck[], id: string, label: string, status: DoctorCheck['status'], detail: string): DoctorCheck {
@@ -3812,6 +3881,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const directTargets = targets.filter(target => targetIsSelectableModel(target));
   const localTargetIds = directTargets.filter(target => isLocalModelTarget(target)).map(target => target.id);
   const cloudTargets = directTargets.filter(target => isCloudModelTarget(target));
+  const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters);
   const cloudTargetIds = cloudTargets.map(target => target.id);
   const pricedCloudTargets = cloudTargets.filter(targetHasInputOutputPricing);
   const preferredCloudTargetIds = (pricedCloudTargets.length ? pricedCloudTargets : cloudTargets).map(target => target.id);
@@ -4193,7 +4263,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     setMessage(`Detecting local runtimes for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
   }
   function openCloudSetupFromRunBuilder() {
-    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: setupBenchmarkPackId, targetIds: selectedLocalTargetIds });
+    openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: setupBenchmarkPackId, targetIds: selectedLocalTargetIds });
     setMessage(`Preparing cloud target setup for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
   }
   async function cancelRun(id: string) {
@@ -5229,6 +5299,7 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
   const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
   const recommendedPack = recommendedComparisonPackId(packs);
   const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
+  const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters, checks);
   function openBenchmarkStep(check: DoctorCheck) {
     if (check.command.startsWith('Runs > Local + cloud') && recommendedTargetIds.length >= 2) {
       openRunBuilder(localCloudRunBuilderIntent(recommendedTargetIds, recommendedPack));
@@ -5255,7 +5326,7 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
       return;
     }
     if (check.command.startsWith('Targets')) {
-      openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: recommendedPack });
+      openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedPack });
       setMessage('Preparing cloud target setup for the next benchmark step');
       return;
     }
@@ -5307,7 +5378,7 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
         <td><span className={`pill ${c.status}`}>{c.status}</span></td>
         <td>{c.detail}</td>
         <td className="doctor-remediation">{c.remediation || '-'}</td>
-        <td>{doctorAction(c, targets, adapters, recommendedPack, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup)}</td>
+        <td>{doctorAction(c, targets, cloudSetupAdapterId, recommendedPack, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup)}</td>
         <td className="doctor-command">{c.command ? <div className="doctor-command-cell"><code>{c.command}</code><button title="Copy command or path" onClick={() => copyDoctorCommand(c).catch(error => setMessage(String(error)))}><Copy size={14} /></button></div> : '-'}</td>
       </tr>)}</tbody>
     </table>
@@ -5452,7 +5523,7 @@ function cloudKeyDoctorAdapterId(check: DoctorCheck) {
   return check.id.startsWith('cloud-key-') ? check.id.slice('cloud-key-'.length) : '';
 }
 
-function doctorAction(check: DoctorCheck, targets: Target[], adapters: Adapter[], benchmarkPackId: string, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
+function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId: string, benchmarkPackId: string, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
@@ -5486,7 +5557,7 @@ function doctorAction(check: DoctorCheck, targets: Target[], adapters: Adapter[]
       if (repair) {
         openReadinessTargetRepair(targets, 'cloud', openTargetRepair, setMessage);
       } else {
-        openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId });
+        openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId });
       }
     }}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Cloud'}</button>;
   }
@@ -9012,6 +9083,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
   const unpricedCloudComparisonTargetIds = selectableCloudTargets
     .filter(target => !targetHasInputOutputPricing(target))
     .map(target => target.id);
+  const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters);
   const cloudComparisonNeedsPricing = Boolean(selectableCloudTargetCount && unpricedCloudComparisonTargetIds.length && !selectablePricedCloudTargetCount);
   const autoCompareReady = autoBenchmarkAfterStart && selectablePricedCloudTargetCount > 0;
   const cloudComparisonStatus = hfCloudComparisonStatus(selectableCloudTargetCount, selectablePricedCloudTargetCount);
@@ -9037,7 +9109,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
       setMessage(`Add input/output pricing before automatic local/cloud comparison: ${previewList(unpricedCloudComparisonTargetIds)}`);
       return;
     }
-    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: autoBenchmarkPackId });
+    openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: autoBenchmarkPackId });
   }
 
   async function refreshHf() {
