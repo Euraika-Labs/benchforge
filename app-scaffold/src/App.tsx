@@ -4407,23 +4407,48 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   }, [runBuilderIntent, targets, packs, onRunBuilderIntentConsumed, setMessage]);
 
   useEffect(() => {
-    if (autoSeedRunBuilderDefaultsRef.current || runBuilderIntent || !packs.length || !localCloudTargetIds.length) {
+    if (autoSeedRunBuilderDefaultsRef.current || runBuilderIntent || !packs.length) {
       return;
     }
     if (selected.length !== 1 || selected[0] !== 'mock-agent' || selectedPackId !== 'quick-smoke' || repetitions !== '1' || warmupRuns !== '0' || concurrency !== '1' || maxCostUsd) {
       return;
     }
-    const packId = recommendedComparisonPackId(packs);
-    if (!packs.some(pack => pack.id === packId)) {
+    if (localCloudTargetIds.length) {
+      const packId = recommendedComparisonPackId(packs);
+      if (!packs.some(pack => pack.id === packId)) {
+        return;
+      }
+      const intent = localCloudRunBuilderIntent(localCloudTargetIds, packId);
+      autoSeedRunBuilderDefaultsRef.current = true;
+      setSelected(intent.targetIds);
+      setSelectedPackId(intent.benchmarkPackId ?? packId);
+      applyRunBuilderIntentSettings(intent, setRepetitions, setWarmupRuns, setConcurrency, setMaxCostUsd);
+      setMessage(`Run Builder preselected ${intent.targetIds.length} local/cloud model target(s), ${benchmarkPackLabel(packId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
       return;
     }
-    const intent = localCloudRunBuilderIntent(localCloudTargetIds, packId);
+    if (!modelTargetIds.length) {
+      return;
+    }
+    const packId = preferredRunPackForTargets(modelTargetIds, targets, packs);
+    if (!packId || !packs.some(pack => pack.id === packId)) {
+      return;
+    }
+    const settings = automaticModelBenchmarkSettings(packId);
+    const includesCloudTarget = modelTargetIds.some(id => cloudTargetIds.includes(id));
+    const maxCost = automaticModelBenchmarkMaxCostUsd(packId);
     autoSeedRunBuilderDefaultsRef.current = true;
-    setSelected(intent.targetIds);
-    setSelectedPackId(intent.benchmarkPackId ?? packId);
-    applyRunBuilderIntentSettings(intent, setRepetitions, setWarmupRuns, setConcurrency, setMaxCostUsd);
-    setMessage(`Run Builder preselected ${intent.targetIds.length} local/cloud model target(s), ${benchmarkPackLabel(packId)}, 3 repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap`);
-  }, [runBuilderIntent, packs, localCloudTargetIds, selected, selectedPackId, repetitions, warmupRuns, concurrency, maxCostUsd, setMessage]);
+    setSelected(modelTargetIds);
+    setSelectedPackId(packId);
+    setRepetitions(String(settings.repetitions));
+    setWarmupRuns(String(settings.warmupRuns));
+    setConcurrency(String(settings.concurrency));
+    if (includesCloudTarget) {
+      setMaxCostUsd(String(maxCost));
+    }
+    const scopeLabel = localTargetIds.length ? 'local model' : 'cloud model';
+    const capNote = includesCloudTarget ? `, ${formatCost(maxCost)} cap` : '';
+    setMessage(`Run Builder preselected ${modelTargetIds.length} ${scopeLabel} target(s), ${benchmarkPackLabel(packId)}, ${settings.repetitions} repetition(s), ${settings.warmupRuns} warmup(s)${capNote}`);
+  }, [runBuilderIntent, packs, localCloudTargetIds, modelTargetIds, targets, cloudTargetIds, localTargetIds, selected, selectedPackId, repetitions, warmupRuns, concurrency, maxCostUsd, setMessage]);
 
   useEffect(() => {
     if (!pendingTaskIntent || pendingTaskIntent.packId !== selectedPackId || tasksLoading || taskError || !packTasks.length) {
