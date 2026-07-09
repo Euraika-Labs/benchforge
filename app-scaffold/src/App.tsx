@@ -631,6 +631,10 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   function openCloudTargetSetup() {
     openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedComparisonPack, targetIds: setupLocalTargetIds });
   }
+  function openHuggingFaceLocalModelSetup() {
+    setPage('settings');
+    setMessage(huggingFaceLocalModelSetupMessage(targets, setupCloudTargetIds, recommendedComparisonPack));
+  }
   async function runDashboardIntent(intent: RunBuilderIntent, scopeLabelOverride = 'local/cloud comparison') {
     const benchmarkPackId = intent.benchmarkPackId ?? recommendedComparisonPack;
     const selectedTaskIds = intent.taskIds?.filter(id => id.trim()) ?? [];
@@ -847,7 +851,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       </div> : null}
       <div className="actions">
         <button onClick={openLocalRuntimeDetection}><Search size={14} />Detect runtime</button>
-        <button onClick={() => setPage('settings')}><Settings size={14} />Local model</button>
+        <button onClick={openHuggingFaceLocalModelSetup}><Settings size={14} />Local model</button>
         <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
         <button disabled={primaryBenchmarkActionDisabled} title={primaryBenchmarkActionTitle} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
         <button disabled={compareAllDisabled} title={compareAllTitle} onClick={openAllComparisonRun}><ClipboardCheck size={14} />Compare all</button>
@@ -6203,6 +6207,13 @@ function dashboardBenchmarkStepIcon(check: DoctorCheck) {
   return check.command ? nextBenchmarkStepIcon(check) : <ShieldCheck size={14} />;
 }
 
+function huggingFaceLocalModelSetupMessage(targets: Target[], setupCloudTargetIds: string[], benchmarkPackId: string) {
+  if (setupCloudTargetIds.length) {
+    return `Open Hugging Face Local Model. Start after download will compare the new local target with ${previewList(targetLabelsById(setupCloudTargetIds, targets))} using ${benchmarkPackLabel(benchmarkPackId)}.`;
+  }
+  return 'Open Hugging Face Local Model to search, download, start, and benchmark a local GGUF model. Add a priced cloud target when you want the same benchmark compared against cloud.';
+}
+
 function nextBenchmarkStepPage(check: DoctorCheck): Page {
   if (check.command.startsWith('Settings')) {
     return 'settings';
@@ -6318,7 +6329,10 @@ function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
   if (check.id === 'hf-model-storage') {
-    return <button onClick={() => setPage('settings')}><Settings size={14} />Local</button>;
+    return <button onClick={() => {
+      setPage('settings');
+      setMessage(huggingFaceLocalModelSetupMessage(targets, recommendedTargets.setupCloudTargetIds, benchmarkPackId));
+    }}><Settings size={14} />Local</button>;
   }
   if (check.id.startsWith('cloud-key-')) {
     const adapterId = cloudKeyDoctorAdapterId(check);
@@ -6338,6 +6352,7 @@ function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId
         openReadinessTargetRepair(targets, 'local', openTargetRepair, setMessage);
       } else {
         setPage('settings');
+        setMessage(huggingFaceLocalModelSetupMessage(targets, recommendedTargets.setupCloudTargetIds, benchmarkPackId));
       }
     }}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Local'}</button>;
   }
