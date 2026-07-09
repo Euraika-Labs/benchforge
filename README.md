@@ -158,8 +158,8 @@ Choose the fastest path for the thing you want to prove:
 | Goal | Start with |
 | --- | --- |
 | Test the app and built-in fixtures | `make test && make benchmark-readiness` |
-| Benchmark a GGUF model from Hugging Face | `make dev`, then use Settings -> Hugging Face Local Model |
-| Compare a local server to a cloud model | Add/validate both targets, then run an `llm-*` pack with at least 3 repetitions |
+| Benchmark a GGUF model from Hugging Face | `make dev`, then use the Dashboard local setup action or Settings -> Hugging Face Local Model |
+| Compare a local server to a cloud model | Let the Dashboard route ready local/cloud setup, then run an `llm-*` pack with at least 3 repetitions |
 | Verify report quality | `make report-smoke` or export a report folder from Results |
 | Build a macOS installer | `make package-dmg && make verify-dmg && make install-smoke-dmg` |
 
@@ -167,7 +167,7 @@ Choose the fastest path for the thing you want to prove:
 
 1. Install the host tools and run `./scripts/bootstrap.sh`.
 2. Run `make doctor` and fix required setup issues. The Hugging Face GGUF path needs Python 3.10+ and `llama.cpp`; `hf` is recommended, but BenchForge can use `curl` for public downloads.
-3. Start the desktop app with `make dev`.
+3. Start the desktop app with `make dev`. On a clean workspace, BenchForge opens a ready local runtime or keyed cloud provider setup path when Doctor can detect one; otherwise it opens Doctor.
 4. In Settings, save `HF_TOKEN` if the model is gated or private. You must accept any gated model license on Hugging Face first.
 5. Open Hugging Face Local Model, search for a GGUF repository, choose a `.gguf` file, and leave Start after download enabled.
 6. BenchForge creates a download job, verifies or reuses the model file, starts `llama-server`, registers and validates the local target, then queues the selected benchmark pack when auto-run is enabled.

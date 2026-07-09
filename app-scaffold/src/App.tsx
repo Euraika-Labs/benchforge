@@ -363,7 +363,15 @@ export default function App() {
       benchmarkWorkspaceNeedsSetup(nextTargets, nextResults, nextRunJobs, nextDownloadJobs, nextServerJobs)
       && !localStorage.getItem(emptyWorkspaceDoctorOpenedKey)
     ) {
-      setPage('doctor');
+      const setupIntent = firstUsefulTargetSetupIntent(nextAdapters, nextChecks, nextPacks);
+      if (setupIntent) {
+        setTargetRepairIntent(null);
+        setHfLocalSetupIntent(null);
+        setTargetSetupIntent({ ...setupIntent, nonce: Date.now() });
+        setPage('targets');
+      } else {
+        setPage('doctor');
+      }
       localStorage.setItem(emptyWorkspaceDoctorOpenedKey, '1');
     }
     localStorage.setItem(firstRunSeenKey, '1');
@@ -1244,6 +1252,18 @@ function benchmarkWorkspaceNeedsSetup(
   const hasBenchmarkHistory = results.length > 0;
   const hasRecoverableWork = runJobs.length > 0 || downloadJobs.length > 0 || serverJobs.length > 0;
   return !hasUserTarget && !hasBenchmarkHistory && !hasRecoverableWork;
+}
+
+function firstUsefulTargetSetupIntent(adapters: Adapter[], checks: DoctorCheck[], packs: BenchmarkPack[]): Omit<TargetSetupIntent, 'nonce'> | null {
+  const benchmarkPackId = recommendedComparisonPackId(packs);
+  if (dashboardLocalRuntimeCheck(checks).check.status === 'ok') {
+    return { code: 'local_runtime_detect', benchmarkPackId, targetIds: [] };
+  }
+  const cloudAdapterId = preferredCloudSetupAdapterFromDoctorChecks(adapters, checks);
+  if (cloudAdapterId) {
+    return { adapterId: cloudAdapterId, code: 'missing_key', benchmarkPackId, targetIds: [] };
+  }
+  return null;
 }
 
 function dashboardLocalRuntimeCheck(checks: DoctorCheck[]) {
