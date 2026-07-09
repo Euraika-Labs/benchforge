@@ -6229,8 +6229,20 @@ function dashboardBenchmarkStepIcon(check: DoctorCheck) {
 }
 
 function huggingFaceLocalModelSetupMessage(targets: Target[], setupCloudTargetIds: string[], benchmarkPackId: string) {
-  if (setupCloudTargetIds.length) {
-    return `Open Hugging Face Local Model. Start after download will compare the new local target with ${previewList(targetLabelsById(setupCloudTargetIds, targets))} using ${benchmarkPackLabel(benchmarkPackId)}.`;
+  const setupTargets = setupCloudTargetIds
+    .map(id => targets.find(target => target.id === id))
+    .filter((target): target is Target => Boolean(target));
+  const cloudTargets = setupTargets.filter(isCloudModelTarget);
+  const pricedCloudTargets = cloudTargets.filter(targetHasInputOutputPricing);
+  const unpricedCloudTargets = cloudTargets.filter(target => !targetHasInputOutputPricing(target));
+  if (pricedCloudTargets.length) {
+    const unpricedNote = unpricedCloudTargets.length
+      ? ` Add pricing for ${previewList(unpricedCloudTargets.map(target => target.name))} before including them.`
+      : '';
+    return `Open Hugging Face Local Model. Start after download will compare the new local target with ${previewList(pricedCloudTargets.map(target => target.name))} using ${benchmarkPackLabel(benchmarkPackId)}.${unpricedNote}`;
+  }
+  if (unpricedCloudTargets.length) {
+    return `Open Hugging Face Local Model. Add input/output pricing for ${previewList(unpricedCloudTargets.map(target => target.name))} before automatic local/cloud comparison. Until then, Start after download can still create the local target and run ${benchmarkPackLabel(benchmarkPackId)} locally.`;
   }
   return 'Open Hugging Face Local Model to search, download, start, and benchmark a local GGUF model. Add a priced cloud target when you want the same benchmark compared against cloud.';
 }
@@ -10108,15 +10120,18 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
     }
     const packId = resolveModelBenchmarkPackId(setupIntent.benchmarkPackId, modelBenchmarkPacks, packs);
     const handoffTargetIds = setupIntent.targetIds?.filter(id => targets.some(target => target.id === id)) ?? [];
-    const handoffCloudTarget = handoffTargetIds
-      .map(id => selectablePricedCloudTargets.find(target => target.id === id))
+    const handoffCloudTargets = handoffTargetIds
+      .map(id => targets.find(target => target.id === id))
+      .filter((target): target is Target => Boolean(target && isCloudModelTarget(target)));
+    const handoffPricedCloudTarget = handoffCloudTargets
+      .map(target => selectablePricedCloudTargets.find(candidate => candidate.id === target.id))
       .find((target): target is Target => Boolean(target));
     setAutoStartAfterDownload(true);
     setAutoBenchmarkAfterStart(true);
-    setAutoCompareAfterStart(true);
+    setAutoCompareAfterStart(handoffCloudTargets.length ? Boolean(handoffPricedCloudTarget) : true);
     setAutoBenchmarkPackId(packId);
-    if (handoffCloudTarget) {
-      setAutoCompareCloudTargetId(handoffCloudTarget.id);
+    if (handoffPricedCloudTarget) {
+      setAutoCompareCloudTargetId(handoffPricedCloudTarget.id);
     }
     setMessage(huggingFaceLocalModelSetupMessage(targets, handoffTargetIds, packId));
     onSetupIntentConsumed();
