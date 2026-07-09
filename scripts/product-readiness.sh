@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAKE_BIN="${MAKE:-make}"
 LOG_ROOT="${BENCHFORGE_PRODUCT_READINESS_LOG_DIR:-$ROOT/.benchforge/readiness}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-RUN_DIR="$LOG_ROOT/product-$STAMP"
+RUN_DIR="$LOG_ROOT/product-$STAMP-$$"
 STRICT="${BENCHFORGE_PRODUCT_READINESS_STRICT:-0}"
 RUN_LOCAL="${BENCHFORGE_PRODUCT_READINESS_RUN_LOCAL:-0}"
 RUN_FULL="${BENCHFORGE_PRODUCT_READINESS_RUN_FULL:-0}"
@@ -96,14 +96,58 @@ check_latest_readiness() {
   fi
 }
 
-configured_provider_env_count() {
+provider_env_name() {
+  case "$1" in
+    openai) echo "OPENAI_API_KEY" ;;
+    anthropic) echo "ANTHROPIC_API_KEY" ;;
+    mistral) echo "MISTRAL_API_KEY" ;;
+    openrouter) echo "OPENROUTER_API_KEY" ;;
+    azure-openai) echo "AZURE_OPENAI_API_KEY" ;;
+    gemini) echo "GEMINI_API_KEY" ;;
+    *) echo "" ;;
+  esac
+}
+
+provider_keychain_available() {
+  local provider="$1"
+  if ! command -v security >/dev/null 2>&1; then
+    return 1
+  fi
+  security find-generic-password -a api_key -s "benchforge/cloud/$provider" >/dev/null 2>&1
+}
+
+configured_provider_key_summary() {
   local count=0
-  for name in OPENAI_API_KEY ANTHROPIC_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY AZURE_OPENAI_API_KEY GEMINI_API_KEY; do
-    if [[ -n "${!name:-}" ]]; then
+  local configured=()
+  local provider env_name sources
+  for provider in openai anthropic mistral openrouter azure-openai gemini; do
+    sources=()
+    env_name="$(provider_env_name "$provider")"
+    if [[ -n "$env_name" && -n "${!env_name:-}" ]]; then
+      sources+=("env")
+    fi
+    if provider_keychain_available "$provider"; then
+      sources+=("keychain")
+    fi
+    if [[ "${#sources[@]}" -gt 0 ]]; then
       count=$((count + 1))
+      configured+=("$provider($(IFS=+; echo "${sources[*]}"))")
     fi
   done
-  echo "$count"
+  printf "%s\n" "$count"
+  if [[ "${#configured[@]}" -gt 0 ]]; then
+    local detail=""
+    local item
+    for item in "${configured[@]}"; do
+      if [[ -n "$detail" ]]; then
+        detail+=", "
+      fi
+      detail+="$item"
+    done
+    printf "%s\n" "$detail"
+  else
+    printf "\n"
+  fi
 }
 
 live_cloud_status_from_log() {
@@ -133,10 +177,12 @@ PY
 
 check_live_cloud() {
   if [[ "$RUN_LIVE" != "1" ]]; then
-    local env_count
-    env_count="$(configured_provider_env_count)"
-    if [[ "$env_count" -gt 0 ]]; then
-      warn "$env_count live provider key environment variable(s) are set; run BENCHFORGE_PRODUCT_READINESS_RUN_LIVE=1 make product-readiness to validate them"
+    local key_summary key_count key_detail
+    key_summary="$(configured_provider_key_summary)"
+    key_count="$(printf "%s\n" "$key_summary" | sed -n '1p')"
+    key_detail="$(printf "%s\n" "$key_summary" | sed -n '2p')"
+    if [[ "$key_count" -gt 0 ]]; then
+      warn "$key_count live provider(s) with key material detected: $key_detail; run BENCHFORGE_PRODUCT_READINESS_RUN_LIVE=1 make product-readiness to validate them"
     else
       warn "live cloud providers not verified; run make live-cloud-smoke for validation or make live-cloud-run-basics for a paid live comparison"
     fi
