@@ -14,8 +14,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
-    adapters, diagnostics, harness_tools, huggingface, jobs, paths, runner, runtime_tools, secrets,
-    store, targeting,
+    adapters, diagnostics, harness_tools, huggingface, jobs, paths, runner, runtime_tools, safety,
+    secrets, store, targeting,
 };
 
 const PROMPT_DEFAULT_MAX_TOKENS: u64 = 512;
@@ -34,6 +34,9 @@ pub struct TargetDto {
     pub kind: String,
     #[serde(rename = "adapterId")]
     pub adapter_id: String,
+    pub model: Option<String>,
+    pub endpoint: Option<String>,
+    pub command: Option<String>,
     pub status: String,
     pub enabled: bool,
     #[serde(rename = "isLocalModel")]
@@ -525,6 +528,9 @@ fn target_dto_from_parts(
         name: name.into(),
         kind: kind.into(),
         adapter_id: adapter_id.into(),
+        model: public_target_config_value(config, &["model", "model_id", "deployment"]),
+        endpoint: public_target_config_value(config, &["base_url", "endpoint", "url"]),
+        command: public_target_config_value(config, &["command"]),
         status: if enabled {
             "valid".into()
         } else {
@@ -9711,6 +9717,28 @@ fn benchmark_adapter_map() -> BTreeMap<String, adapters::LoadedAdapter> {
 
 fn target_config_json(target: &store::TargetRecord) -> serde_json::Value {
     serde_json::from_str(&target.config_json).unwrap_or_else(|_| serde_json::json!({}))
+}
+
+fn public_target_config_value(config: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        let value = config.get(*key)?.as_str()?.trim();
+        if value.is_empty() {
+            return None;
+        }
+        Some(short_public_target_value(&safety::redact_sensitive_text(
+            value,
+        )))
+    })
+}
+
+fn short_public_target_value(value: &str) -> String {
+    let mut chars = value.chars();
+    let shortened = chars.by_ref().take(240).collect::<String>();
+    if chars.next().is_some() {
+        format!("{}...", shortened)
+    } else {
+        shortened
+    }
 }
 
 fn adapter_is_local_model_adapter(adapter: &adapters::LoadedAdapter) -> bool {
@@ -20211,6 +20239,40 @@ mod tests {
         assert_eq!(dto.output_price_usd_per_million_tokens, Some(2.0));
         assert_eq!(dto.cache_read_price_usd_per_million_tokens, Some(0.05));
         assert_eq!(dto.cache_write_price_usd_per_million_tokens, Some(0.30));
+    }
+
+    #[test]
+    fn target_dto_exposes_safe_identity_without_secret_values() {
+        let adapter_map = benchmark_adapter_map();
+        let target = target_record(
+            "identity-target",
+            "Identity Target",
+            "direct_model",
+            "openai-compatible",
+            serde_json::json!({
+                "model": "private-model-1",
+                "base_url": "https://example.test/v1?api_key=sk-testsecret123456789",
+                "command": "bench --token hf_secretvalue123456789 --model private-model-1",
+                "api_key_env": "OPENAI_API_KEY"
+            }),
+        );
+
+        let dto = target_dto_from_record(target, &adapter_map);
+
+        assert_eq!(dto.model.as_deref(), Some("private-model-1"));
+        assert!(dto
+            .endpoint
+            .as_deref()
+            .unwrap_or("")
+            .contains("example.test"));
+        assert!(dto.command.as_deref().unwrap_or("").contains("bench"));
+        for public_value in [dto.endpoint.as_deref(), dto.command.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            assert!(!public_value.contains("sk-testsecret123456789"));
+            assert!(!public_value.contains("hf_secretvalue123456789"));
+        }
     }
 
     #[test]

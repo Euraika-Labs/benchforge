@@ -26,11 +26,11 @@ export interface ProviderApiKeyStatus {
 export async function listTargets(): Promise<Target[]> {
   if (!isTauri()) {
     return [
-      { id: 'mock-agent', name: 'Mock Agent', kind: 'mock', adapterId: 'mock', status: 'valid', enabled: true },
-      { id: 'benchforge-worker', name: 'BenchForge Worker', kind: 'benchmark_harness', adapterId: 'benchforge-worker', status: 'valid', enabled: true },
-      { id: 'qwen-ollama', name: 'Qwen via Ollama', kind: 'direct_model', adapterId: 'ollama-openai', status: 'unknown', enabled: true, isLocalModel: true },
-      { id: 'cloud-gpt', name: 'Cloud GPT preview', kind: 'direct_model', adapterId: 'openai', status: 'valid', enabled: true, isCloudModel: true },
-      { id: 'codex-cli', name: 'Codex CLI', kind: 'cli_agent', adapterId: 'codex-cli', status: 'unknown', enabled: true },
+      { id: 'mock-agent', name: 'Mock Agent', kind: 'mock', adapterId: 'mock', model: 'deterministic fixture', status: 'valid', enabled: true },
+      { id: 'benchforge-worker', name: 'BenchForge Worker', kind: 'benchmark_harness', adapterId: 'benchforge-worker', command: 'benchforge-worker', status: 'valid', enabled: true },
+      { id: 'qwen-ollama', name: 'Qwen via Ollama', kind: 'direct_model', adapterId: 'ollama-openai', model: 'qwen2.5-coder:7b', endpoint: 'http://localhost:11434/v1', status: 'unknown', enabled: true, isLocalModel: true },
+      { id: 'cloud-gpt', name: 'Cloud GPT preview', kind: 'direct_model', adapterId: 'openai', model: 'gpt-4.1-mini', endpoint: 'https://api.openai.com/v1', status: 'valid', enabled: true, isCloudModel: true },
+      { id: 'codex-cli', name: 'Codex CLI', kind: 'cli_agent', adapterId: 'codex-cli', command: 'codex', status: 'unknown', enabled: true },
     ];
   }
   return invoke<Target[]>('list_targets');
@@ -38,7 +38,17 @@ export async function listTargets(): Promise<Target[]> {
 
 export async function createTarget(target: { id: string; name: string; kind: string; adapterId: string; config?: Record<string, unknown> }): Promise<Target> {
   if (!isTauri()) {
-    return { id: target.id, name: target.name, kind: target.kind as Target['kind'], adapterId: target.adapterId, status: 'valid', enabled: true };
+    return {
+      id: target.id,
+      name: target.name,
+      kind: target.kind as Target['kind'],
+      adapterId: target.adapterId,
+      model: typeof target.config?.model === 'string' ? target.config.model : null,
+      endpoint: typeof target.config?.base_url === 'string' ? target.config.base_url : null,
+      command: typeof target.config?.command === 'string' ? target.config.command : null,
+      status: 'valid',
+      enabled: true,
+    };
   }
   return invoke<Target>('create_target', { request: target });
 }

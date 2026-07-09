@@ -14741,8 +14741,7 @@ new file mode 100644
         let result = run_prompt_task(&conn, &target, &pack, &task, 0, 1, None, &|| false)
             .expect("local prompt run should persist");
         assert_eq!(
-            result.status,
-            "passed",
+            result.status, "passed",
             "local prompt run should pass; error: {:?}",
             result.error
         );

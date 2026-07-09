@@ -5,6 +5,9 @@ export interface Target {
   name: string;
   kind: TargetKind;
   adapterId: string;
+  model?: string | null;
+  endpoint?: string | null;
+  command?: string | null;
   status: 'unknown' | 'valid' | 'invalid';
   enabled: boolean;
   isLocalModel?: boolean;

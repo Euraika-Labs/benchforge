@@ -181,6 +181,7 @@ textarea { resize: vertical; }
 .row-actions button { min-height: 32px; padding: 0 10px; }
 .task-row-actions { justify-content: flex-start; margin-top: 8px; }
 .target-shortcuts { justify-content: flex-start; margin: 10px 0; }
+.target-identity { display: block; max-width: 260px; overflow-wrap: anywhere; line-height: 1.35; }
 .runtime-hints { display: grid; gap: 4px; margin-top: 6px; }
 .runtime-hints code { display: block; max-width: 420px; overflow-x: auto; border: 1px solid #e7e5e4; border-radius: 6px; padding: 5px 6px; background: #fafaf9; color: #292524; white-space: nowrap; }
 .task-preview-text { max-width: 420px; max-height: 120px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #292524; }
