@@ -63,6 +63,7 @@ IMPORT_FILE_SUFFIXES = {".csv", ".json", ".jsonl", ".log", ".out", ".txt", ".xml
 TEXT_IMPORT_SUFFIXES = {".log", ".out", ".txt"}
 MAX_IMPORT_BYTES = 3_000_000
 MAX_IMPORT_FILES = 50
+MAX_UNSUPPORTED_IMPORT_FILE_NAMES = 25
 RESULT_COLLECTION_KEYS = [
     "results",
     "instances",
@@ -540,6 +541,17 @@ def run_imported_result(
                 ),
             }
         )
+    if metadata["unsupported_file_count"]:
+        supported = ", ".join(sorted(IMPORT_FILE_SUFFIXES))
+        diagnostics.append(
+            {
+                "level": "warn",
+                "message": (
+                    f"ignored {metadata['unsupported_file_count']} unsupported file(s) in imported {kind} "
+                    f"result directory; supported suffixes: {supported}"
+                ),
+            }
+        )
     for diagnostic in diagnostics:
         record({"type": "diagnostic", "run_id": run_id, **diagnostic})
 
@@ -588,11 +600,14 @@ def run_imported_result(
     result["import_files"] = metadata["file_count"]
     result["import_total_files"] = metadata["total_file_count"]
     result["import_omitted_files"] = metadata["omitted_file_count"]
+    result["import_unsupported_file_count"] = metadata["unsupported_file_count"]
+    result["import_unsupported_files"] = metadata["unsupported_files"]
     result["import_truncated"] = metadata["truncated"]
     result["metrics"]["imported"] = 1
     result["metrics"]["import_file_count"] = metadata["file_count"]
     result["metrics"]["import_total_file_count"] = metadata["total_file_count"]
     result["metrics"]["import_omitted_file_count"] = metadata["omitted_file_count"]
+    result["metrics"]["import_unsupported_file_count"] = metadata["unsupported_file_count"]
     result["metrics"]["import_truncated"] = 1 if metadata["truncated"] else 0
     result["metrics"]["import_truncated_bytes"] = metadata["truncated_bytes"]
     result["metrics"]["import_format"] = metadata["format"]
@@ -613,10 +628,14 @@ def read_imported_output(path: Path) -> tuple[str, dict[str, Any]]:
             1,
             read_file_count=1,
             omitted_file_count=0,
+            unsupported_file_count=0,
+            unsupported_files=[],
             truncated_bytes=read_detail["truncated_bytes"],
             file_details=[import_file_detail(path, path, read_detail)],
         )
-    files, total_file_count = imported_files_with_stats(path)
+    files, total_file_count, unsupported_file_count, unsupported_files = imported_files_with_stats(
+        path
+    )
     if not files:
         raise HarnessConfigError(
             "import_invalid",
@@ -639,12 +658,20 @@ def read_imported_output(path: Path) -> tuple[str, dict[str, Any]]:
     omitted_file_count = max(0, total_file_count - len(read_files))
     if omitted_file_count:
         chunks.append(f"[omitted {omitted_file_count} supported result file(s) after import limits]")
+    if unsupported_file_count:
+        visible = ", ".join(unsupported_files)
+        extra = unsupported_file_count - len(unsupported_files)
+        if extra > 0:
+            visible = f"{visible}, +{extra} more" if visible else f"+{extra} more"
+        chunks.append(f"[ignored {unsupported_file_count} unsupported file(s): {visible}]")
     return "\n".join(chunks), import_metadata(
         path,
         read_files,
         total_file_count,
         read_file_count=len(read_files),
         omitted_file_count=omitted_file_count,
+        unsupported_file_count=unsupported_file_count,
+        unsupported_files=unsupported_files,
         truncated_bytes=truncated_bytes,
         file_details=file_details,
     )
@@ -667,6 +694,8 @@ def import_metadata(
     *,
     read_file_count: int,
     omitted_file_count: int,
+    unsupported_file_count: int,
+    unsupported_files: list[str],
     truncated_bytes: int,
     file_details: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -682,6 +711,8 @@ def import_metadata(
         "read_file_count": read_file_count,
         "total_file_count": total_file_count,
         "omitted_file_count": omitted_file_count,
+        "unsupported_file_count": unsupported_file_count,
+        "unsupported_files": unsupported_files,
         "truncated": truncated_bytes > 0 or omitted_file_count > 0,
         "truncated_bytes": truncated_bytes,
         "format": formats[0] if len(formats) == 1 else "mixed",
@@ -705,18 +736,25 @@ def import_file_detail(root: Path, path: Path, read_detail: dict[str, Any]) -> d
 
 
 def imported_files(path: Path) -> list[Path]:
-    files, _ = imported_files_with_stats(path)
+    files, _, _, _ = imported_files_with_stats(path)
     return files
 
 
-def imported_files_with_stats(path: Path) -> tuple[list[Path], int]:
+def imported_files_with_stats(path: Path) -> tuple[list[Path], int, int, list[str]]:
     if path.is_file():
-        return [path], 1
+        return [path], 1, 0, []
     root = path.resolve()
     files: list[Path] = []
     total_file_count = 0
+    unsupported_file_count = 0
+    unsupported_files: list[str] = []
     for item in sorted(path.rglob("*"), key=lambda item: import_file_sort_key(path, item)):
-        if item.suffix.lower() not in IMPORT_FILE_SUFFIXES:
+        suffix = item.suffix.lower()
+        if suffix not in IMPORT_FILE_SUFFIXES:
+            if item.is_symlink() or item.is_file():
+                unsupported_file_count += 1
+                if len(unsupported_files) < MAX_UNSUPPORTED_IMPORT_FILE_NAMES:
+                    unsupported_files.append(str(item.relative_to(path)))
             continue
         if item.is_symlink():
             raise HarnessConfigError(
@@ -734,7 +772,7 @@ def imported_files_with_stats(path: Path) -> tuple[list[Path], int]:
         total_file_count += 1
         if len(files) < MAX_IMPORT_FILES:
             files.append(item)
-    return files, total_file_count
+    return files, total_file_count, unsupported_file_count, unsupported_files
 
 
 def import_file_sort_key(root: Path, path: Path) -> tuple[int, str]:

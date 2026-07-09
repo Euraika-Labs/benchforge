@@ -332,7 +332,7 @@ Use `harness.import_path` when you already have benchmark output to normalize in
 }
 ```
 
-Import paths must resolve inside the per-run worker workspace or output directory. Supported inputs are CSV, JSON, JSONL, JUnit XML, text, log, and output files or directories containing those files. Symlinked result files in import directories are rejected so imported evidence cannot escape the worker boundary. BenchForge preserves raw imported output as an artifact, records import provenance, and extracts common `total`, `passed`, `failed`, `score`, `pass@1`, and accuracy fields.
+Import paths must resolve inside the per-run worker workspace or output directory. Supported inputs are CSV, JSON, JSONL, JUnit XML, text, log, and output files or directories containing those files. Symlinked result files in import directories are rejected so imported evidence cannot escape the worker boundary. BenchForge preserves raw imported output as an artifact, records import provenance, counts unsupported files ignored during directory imports, and extracts common `total`, `passed`, `failed`, `score`, `pass@1`, and accuracy fields.
 
 ## Results And Reports
 

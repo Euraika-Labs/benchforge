@@ -88,6 +88,9 @@ class HarnessRunnerTests(unittest.TestCase):
         self.assertEqual(event["import_source"], import_source)
         self.assertEqual(event["import_files"], import_files)
         self.assertEqual(len(event["import_read_files"]), import_files)
+        self.assertIn("import_unsupported_file_count", event)
+        self.assertIn("import_unsupported_files", event)
+        self.assertEqual(event["metrics"].get("import_unsupported_file_count"), event["import_unsupported_file_count"])
         self.assertEqual(event["import_hash_algorithm"], "sha256")
         self.assertEqual(len(event["import_file_details"]), import_files)
         for detail in event["import_file_details"]:
@@ -1019,6 +1022,55 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertEqual(event["tests"]["failed"], 1)
             raw_artifact = Path(event["artifacts"][0]["path"])
             self.assertIn("junit.xml", raw_artifact.read_text(encoding="utf-8"))
+
+    def test_worker_directory_import_records_unsupported_files_without_using_them(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            imports = temp_dir / "imports"
+            imports.mkdir()
+            (imports / "summary.json").write_text(
+                json.dumps({"total": 2, "passed": 2, "failed": 0}),
+                encoding="utf-8",
+            )
+            (imports / "notes.md").write_text("# human notes\n", encoding="utf-8")
+            nested = imports / "screenshots"
+            nested.mkdir()
+            (nested / "chart.png").write_bytes(b"not really an image")
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "terminal-bench",
+                "--import-path",
+                str(imports),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            event = self.final_event(output)
+            self.assert_import_metadata(
+                event,
+                import_format="json",
+                import_source="directory",
+                import_files=1,
+                summary_source="json",
+            )
+            self.assertEqual(event["status"], "passed")
+            self.assertEqual(event["import_read_files"], ["summary.json"])
+            self.assertEqual(event["import_total_files"], 1)
+            self.assertEqual(event["import_omitted_files"], 0)
+            self.assertEqual(event["import_unsupported_file_count"], 2)
+            self.assertEqual(event["metrics"]["import_unsupported_file_count"], 2)
+            self.assertEqual(set(event["import_unsupported_files"]), {"notes.md", "screenshots/chart.png"})
+            raw_output = Path(event["artifacts"][0]["path"]).read_text(encoding="utf-8")
+            self.assertIn("[ignored 2 unsupported file(s):", raw_output)
+            self.assertIn("notes.md", raw_output)
+            warnings = [item["message"] for item in event["safety"]["diagnostics"] if item["level"] == "warn"]
+            self.assertTrue(any("ignored 2 unsupported file(s)" in warning for warning in warnings))
 
     def test_worker_imports_junit_xml_without_suite_counts(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
