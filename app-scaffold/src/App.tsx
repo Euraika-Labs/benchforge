@@ -1704,6 +1704,29 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
   }
 
+  async function ensureModelTargetHasRequiredKey(adapter: Adapter, keychainId: string, shouldPreserveKeyReference: boolean, shouldPreserveEnvReference: boolean) {
+    if (!adapterNeedsApiKey(adapter, baseUrl)) {
+      return true;
+    }
+    if (apiKey.trim() || apiKeyEnv.trim() || shouldPreserveKeyReference || shouldPreserveEnvReference) {
+      return true;
+    }
+    setProviderKeyStatusBusy(true);
+    try {
+      const status = await providerApiKeyStatus(keychainId);
+      setProviderKeyAvailable(status.available);
+      setProviderKeyDetail(status.detail ?? '');
+      if (status.available) {
+        return true;
+      }
+      const envHint = status.envVar ? ` or set ${status.envVar}` : ' or configure an API key environment variable';
+      setMessage(`Paste an API key for ${adapter.name}${envHint} before saving this cloud target.`);
+      return false;
+    } finally {
+      setProviderKeyStatusBusy(false);
+    }
+  }
+
   async function searchModels() {
     if (!selectedAdapter) {
       setMessage('Select an adapter first');
@@ -2125,6 +2148,9 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const shouldPreserveEnvReference = wasEditing && !apiKeyEnv.trim() && editingTargetPreserveApiKeyEnvRef;
     if (apiKeyEnv.trim() && !isValidEnvName(apiKeyEnv.trim())) {
       setMessage('API key env var must be a valid environment variable name, for example OPENAI_API_KEY.');
+      return;
+    }
+    if (!(await ensureModelTargetHasRequiredKey(selectedAdapter, keychainId, shouldPreserveKeyReference, shouldPreserveEnvReference))) {
       return;
     }
     if (apiKey.trim()) {
