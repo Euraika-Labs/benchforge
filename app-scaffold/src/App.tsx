@@ -1387,6 +1387,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [editingTargetHadValidationError, setEditingTargetHadValidationError] = useState(false);
   const [editingTargetPreserveApiKeyRef, setEditingTargetPreserveApiKeyRef] = useState(false);
   const [editingTargetPreserveApiKeyEnvRef, setEditingTargetPreserveApiKeyEnvRef] = useState(false);
+  const [editingTargetPendingAutoBenchmarkPackId, setEditingTargetPendingAutoBenchmarkPackId] = useState('');
   const [harnessPresetId, setHarnessPresetId] = useState('custom');
   const [harnessTargetId, setHarnessTargetId] = useState('benchforge-worker');
   const [harnessTargetName, setHarnessTargetName] = useState('BenchForge Worker');
@@ -1753,6 +1754,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setEditingTargetHadValidationError(false);
     setEditingTargetPreserveApiKeyRef(false);
     setEditingTargetPreserveApiKeyEnvRef(false);
+    setEditingTargetPendingAutoBenchmarkPackId('');
     setCloudModels([]);
     setSelectedCloudModel(null);
     setTargetAdvancedOpen(false);
@@ -1784,7 +1786,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setHarnessSetupHint('');
   }
 
-  async function loadTargetForEdit(target: Target) {
+  async function loadTargetForEdit(target: Target, options: { pendingAutoBenchmarkPackId?: string } = {}) {
     if (target.kind !== 'direct_model') {
       setMessage('Only direct model targets can be edited in this form');
       return;
@@ -1814,6 +1816,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       setEditingTargetHadValidationError(target.validationStatus === 'error');
       setEditingTargetPreserveApiKeyRef(config.api_key_keychain === '[REDACTED]');
       setEditingTargetPreserveApiKeyEnvRef(config.api_key_env === '[REDACTED]');
+      setEditingTargetPendingAutoBenchmarkPackId(options.pendingAutoBenchmarkPackId ?? '');
       setAdapterId(adapter.id);
       setTargetName(exported.name);
       setModel(modelValue);
@@ -2107,6 +2110,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
     const wasEditing = Boolean(editingTargetId);
     const wasRepairingValidationError = wasEditing && editingTargetHadValidationError;
+    const pendingAutoBenchmarkPackId = wasEditing ? editingTargetPendingAutoBenchmarkPackId : '';
     const keychainId = providerKeychainId(selectedAdapter, baseUrl);
     const shouldPreserveKeyReference = wasEditing && !apiKey.trim() && editingTargetPreserveApiKeyRef;
     const shouldPreserveEnvReference = wasEditing && !apiKeyEnv.trim() && editingTargetPreserveApiKeyEnvRef;
@@ -2233,9 +2237,11 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         cacheWritePriceUsdPerMillionTokens: parsedCacheWritePrice.value,
       });
       const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targets, packId);
+      const autoBenchmarkNeedsPricing = autoBenchmarkAfterAdd
+        && cappedIntentHasUnpricedCloudTarget(benchmarkIntent, targetListWithOverride(plannedTarget, targets));
       const handoff = await createTargetWithBenchmarkHandoff(
         targetRequest,
-        autoBenchmarkAfterAdd
+        autoBenchmarkAfterAdd && !autoBenchmarkNeedsPricing
           ? {
               benchmarkPackId: packId,
               benchmarkTargetIds: benchmarkIntent.targetIds,
@@ -2266,6 +2272,8 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         false,
         handoff.runJob ?? null,
         handoff.benchmarkError ?? null,
+        false,
+        { pendingAutoBenchmarkPackId: autoBenchmarkNeedsPricing ? packId : '' },
       );
       return;
     }
@@ -2279,8 +2287,18 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setEditingTargetHadValidationError(false);
     setEditingTargetPreserveApiKeyRef(false);
     setEditingTargetPreserveApiKeyEnvRef(false);
+    setEditingTargetPendingAutoBenchmarkPackId('');
     const validation = await validateSavedTarget(target.id);
-    await finishModelTargetHandoff(target, validation, name, wasEditing, null, null, wasRepairingValidationError);
+    await finishModelTargetHandoff(
+      target,
+      validation,
+      name,
+      wasEditing,
+      null,
+      null,
+      wasRepairingValidationError,
+      { runPendingAutoBenchmarkPackId: pendingAutoBenchmarkPackId },
+    );
   }
 
   async function finishModelTargetHandoff(
@@ -2291,6 +2309,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     prestartedJob: RunJob | null = null,
     benchmarkError: string | null = null,
     wasRepairingValidationError = false,
+    options: { pendingAutoBenchmarkPackId?: string; runPendingAutoBenchmarkPackId?: string } = {},
   ) {
     await onRefresh();
     if (!validation) {
@@ -2303,6 +2322,41 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
     const validationNote = validation.status === 'ok' ? 'validated' : `saved with warning: ${validation.detail}`;
     if (wasEditing) {
+      if (options.runPendingAutoBenchmarkPackId && (target.kind === 'direct_model' || target.kind === 'harnessed_model')) {
+        const packId = options.runPendingAutoBenchmarkPackId;
+        const packLabel = benchmarkPackLabel(packId, modelBenchmarkPacks);
+        const intent = automaticModelBenchmarkIntentForTarget(target, targets, packId);
+        const scopeLabel = intent.targetIds.length > 1 ? 'local/cloud comparison' : 'benchmark';
+        if (cappedIntentHasUnpricedCloudTarget(intent, targetListWithOverride(target, targets))) {
+          await loadTargetForEdit(target, { pendingAutoBenchmarkPackId: packId });
+          setMessage(`Target ${name} ${validationNote}. Add input/output pricing before BenchForge starts a capped ${packLabel} ${scopeLabel}.`);
+          return;
+        }
+        try {
+          const job = await startRunJob(
+            intent.targetIds,
+            false,
+            packId,
+            intent.repetitions ?? 1,
+            intent.warmupRuns ?? 0,
+            intent.concurrency ?? 1,
+            intent.maxCostUsd,
+          );
+          await onRefresh();
+          if (!isJobActive(job) && job.results.length) {
+            openResultsForGroup(job.runGroupId, job.results[0]?.id);
+            setMessage(`Updated target ${name}; ${validationNote}. Capped ${packLabel} ${scopeLabel} completed with ${job.results.length} result(s)`);
+            return;
+          }
+          openRunBuilder(intent);
+          setMessage(`Updated target ${name}; ${validationNote}. Queued capped ${packLabel} ${scopeLabel} job ${job.id.slice(0, 8)}`);
+          return;
+        } catch (error) {
+          openRunBuilder(intent);
+          setMessage(`Updated target ${name}; ${validationNote}, but the automatic ${packLabel} ${scopeLabel} job could not start: ${benchmarkRunFailureMessage(error)}`);
+          return;
+        }
+      }
       if (wasRepairingValidationError && (target.kind === 'direct_model' || target.kind === 'harnessed_model')) {
         const comparisonPackId = recommendedComparisonPackId(packs);
         const comparisonIntent = modelComparisonIntentForTarget(target, targets, comparisonPackId, { requirePricedCloud: true });
@@ -2315,10 +2369,15 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       setMessage(`Updated target ${name}; ${validationNote}`);
       return;
     }
-    const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
+    const packId = options.pendingAutoBenchmarkPackId || autoBenchmarkPackId || connectivityBenchmarkPackId;
     const packLabel = benchmarkPackLabel(packId, modelBenchmarkPacks);
     const intent = automaticModelBenchmarkIntentForTarget(target, targets, packId);
     const scopeLabel = intent.targetIds.length > 1 ? 'local/cloud comparison' : 'benchmark';
+    if (options.pendingAutoBenchmarkPackId) {
+      await loadTargetForEdit(target, { pendingAutoBenchmarkPackId: options.pendingAutoBenchmarkPackId });
+      setMessage(`Target ${name} ${validationNote}. Add input/output pricing before BenchForge starts a capped ${packLabel} ${scopeLabel}.`);
+      return;
+    }
     if (!autoBenchmarkAfterAdd) {
       openRunBuilder(intent);
       setMessage(`Target ${name} ${validationNote} and ready in Runs`);
@@ -6621,6 +6680,21 @@ function targetPriceIsConfigured(value: number | null | undefined) {
 function targetHasInputOutputPricing(target: Target) {
   return targetPriceIsConfigured(target.inputPriceUsdPerMillionTokens)
     && targetPriceIsConfigured(target.outputPriceUsdPerMillionTokens);
+}
+
+function targetListWithOverride(target: Target, targets: Target[]) {
+  return [...targets.filter(candidate => candidate.id !== target.id), target];
+}
+
+function cappedIntentHasUnpricedCloudTarget(intent: RunBuilderIntent, targets: Target[]) {
+  if (typeof intent.maxCostUsd !== 'number' || !Number.isFinite(intent.maxCostUsd)) {
+    return false;
+  }
+  const targetById = new Map(targets.map(target => [target.id, target]));
+  return intent.targetIds.some(targetId => {
+    const target = targetById.get(targetId);
+    return Boolean(target && isCloudModelTarget(target) && !targetHasInputOutputPricing(target));
+  });
 }
 
 function coverageTaskFollowUp(evidence: ComparisonEvidenceAssessment): { packId: string; taskIds: string[]; targetIds: string[] } | null {
