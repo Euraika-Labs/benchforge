@@ -799,6 +799,10 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       setPage={setPage}
       onRunNextEvidence={runDashboardEvidenceFollowUp}
       onRepairPricing={openDashboardEvidencePricingRepair}
+      emptyActionLabel={primaryBenchmarkActionLabel}
+      emptyActionTitle={primaryBenchmarkActionTitle}
+      emptyActionDisabled={primaryBenchmarkActionDisabled}
+      onEmptyAction={() => openComparisonRun()}
     />
     <ActiveWorkPanel
       runJobs={runJobs}
@@ -851,6 +855,10 @@ function DashboardModelSelectionPanel({
   setPage,
   onRunNextEvidence,
   onRepairPricing,
+  emptyActionLabel,
+  emptyActionTitle,
+  emptyActionDisabled,
+  onEmptyAction,
 }: {
   rankings: TargetRankingRow[];
   evidence: ComparisonEvidenceAssessment | null;
@@ -861,6 +869,10 @@ function DashboardModelSelectionPanel({
   setPage: (page: Page) => void;
   onRunNextEvidence: (intent: RunBuilderIntent) => void;
   onRepairPricing: (targetIds: string[]) => void;
+  emptyActionLabel: string;
+  emptyActionTitle?: string;
+  emptyActionDisabled: boolean;
+  onEmptyAction: () => void;
 }) {
   const leaders = rankings.slice(0, 3);
   const canImproveEvidence = Boolean(evidence && evidence.grade !== 'comparison_ready');
@@ -873,6 +885,7 @@ function DashboardModelSelectionPanel({
         : 'Evidence is already comparison-ready';
   return <div className="panel dashboard-ranking-panel">
     <div className="panel-head"><h2>Model Selection</h2><div className="actions">
+      {!leaders.length ? <button disabled={emptyActionDisabled} title={emptyActionTitle} onClick={onEmptyAction}><ClipboardCheck size={14} />{emptyActionLabel}</button> : null}
       {canImproveEvidence && nextRunIntent ? <button disabled={busy} title={busy ? 'A benchmark job is already running' : nextRunTitle} onClick={() => onRunNextEvidence(nextRunIntent)}><Play size={14} />Improve evidence</button> : null}
       {canImproveEvidence && !nextRunIntent && pricingRepairTargetIds.length ? <button title={nextRunTitle} onClick={() => onRepairPricing(pricingRepairTargetIds)}><Wrench size={14} />Repair pricing</button> : null}
       {canImproveEvidence && !nextRunIntent && !pricingRepairTargetIds.length ? <button title={nextRunTitle} onClick={() => setPage('results')}><ClipboardCheck size={14} />Evidence details</button> : null}
