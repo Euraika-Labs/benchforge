@@ -14778,7 +14778,7 @@ new file mode 100644
             serde_json::json!({
                 "model": "contract-no-model-echo",
                 "base_url": format!("{}/v1", server.base_url()),
-                "retry_count": 0,
+                "retry_count": 1,
                 "timeout_seconds": 10,
                 "max_tokens": 16
             }),

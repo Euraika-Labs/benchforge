@@ -4577,6 +4577,9 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   });
   const localCloudShortcutTitle = localCloudShortcutHelp(localCloudTargetIds, localCloudSelectedUnpricedCloudTargetIds, skippedUnpricedCloudTargetIds, targets);
   const localCloudReliabilityShortcutTitle = localCloudShortcutHelp(localCloudTargetIds, localCloudSelectedUnpricedCloudTargetIds, skippedUnpricedCloudTargetIds, targets, 'Reliability');
+  const localCloudShortcutLabel = runBuilderComparisonShortcutLabel(localCloudTargetIds, 'Local + cloud');
+  const localCloudReadinessShortcutLabel = runBuilderUseComparisonShortcutLabel(localCloudTargetIds);
+  const allComparableReadinessShortcutLabel = runBuilderUseAllComparisonShortcutLabel(localCloudTargetIds);
   const allModelsShortcutTitle = targetShortcutHelp('all model targets', modelTargetIds, modelTargetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId)), targets);
   const cloudShortcutTitle = targetShortcutHelp('cloud targets', cloudTargetIds, cloudTargetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId)), targets);
 
@@ -5150,6 +5153,8 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
         readiness={comparisonRunReadiness}
         onUseLocalCloud={canApplyLocalCloudPanelShortcut ? () => applyTargetShortcut('local/cloud comparison', localCloudTargetIds, localCloudPanelShortcutPackId) : undefined}
         onUseAllComparable={canApplyAllComparablePanelShortcut ? () => applyTargetShortcut('local/cloud comparison', localCloudTargetIds, localCloudPanelShortcutPackId) : undefined}
+        localCloudActionLabel={localCloudReadinessShortcutLabel}
+        allComparableActionLabel={allComparableReadinessShortcutLabel}
         onAddLocalTarget={canOpenLocalSetupFromReadiness ? openLocalSetupFromRunBuilder : undefined}
         onAddHfLocalModel={canOpenHfLocalSetupFromReadiness ? openHfLocalSetupFromRunBuilder : undefined}
         onAddCloudTarget={canOpenCloudSetupFromReadiness ? openCloudSetupFromRunBuilder : undefined}
@@ -5172,7 +5177,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
         <button disabled={!modelTargetIds.length} title={allModelsShortcutTitle} onClick={() => applyTargetShortcut('model', modelTargetIds)}><Boxes size={14} />All models</button>
         <button disabled={!localTargetIds.length} title={localTargetIds.length ? 'Select all enabled local model targets' : 'Add one enabled local model target'} onClick={() => applyTargetShortcut('local', localTargetIds)}><TerminalSquare size={14} />Local</button>
         <button disabled={!cloudTargetIds.length} title={cloudShortcutTitle} onClick={() => applyTargetShortcut('cloud', cloudTargetIds)}><Database size={14} />Cloud</button>
-        <button disabled={!localCloudTargetIds.length} title={localCloudShortcutTitle} onClick={() => applyTargetShortcut('local/cloud comparison', localCloudTargetIds)}><ClipboardCheck size={14} />Local + cloud</button>
+        <button disabled={!localCloudTargetIds.length} title={localCloudShortcutTitle} onClick={() => applyTargetShortcut('local/cloud comparison', localCloudTargetIds)}><ClipboardCheck size={14} />{localCloudShortcutLabel}</button>
         <button disabled={!localCloudTargetIds.length || !hasReliabilityPack} title={hasReliabilityPack ? localCloudReliabilityShortcutTitle : 'Reliability benchmark pack is not available'} onClick={() => applyTargetShortcut('local/cloud reliability', localCloudTargetIds, 'llm-reliability')}><FlaskConical size={14} />Reliability</button>
         {localCloudTargetIds.length ? <span className={`mini-tag ${localCloudSelectedUnpricedCloudTargetIds.length ? 'warn' : ''}`} title={localCloudShortcutTitle}>
           {localCloudSelectedUnpricedCloudTargetIds.length ? 'pricing needed' : 'cost-ready'}
@@ -5244,6 +5249,8 @@ function LocalCloudRunReadinessPanel({
   readiness,
   onUseLocalCloud,
   onUseAllComparable,
+  localCloudActionLabel = 'Use local + cloud',
+  allComparableActionLabel = 'Use all comparable',
   onAddLocalTarget,
   onAddHfLocalModel,
   onAddCloudTarget,
@@ -5253,6 +5260,8 @@ function LocalCloudRunReadinessPanel({
   readiness: LocalCloudRunReadiness;
   onUseLocalCloud?: () => void;
   onUseAllComparable?: () => void;
+  localCloudActionLabel?: string;
+  allComparableActionLabel?: string;
   onAddLocalTarget?: () => void;
   onAddHfLocalModel?: () => void;
   onAddCloudTarget?: () => void;
@@ -5266,8 +5275,8 @@ function LocalCloudRunReadinessPanel({
     <div className="mini-grid">{readiness.facts.map(fact => <span key={fact}>{fact}</span>)}</div>
     {readiness.notes.map(note => <p key={note}>{note}</p>)}
     {hasActions ? <div className="row-actions">
-      {onUseLocalCloud ? <button onClick={onUseLocalCloud}><ClipboardCheck size={14} />Use local + cloud</button> : null}
-      {onUseAllComparable ? <button onClick={onUseAllComparable}><Boxes size={14} />Use all comparable</button> : null}
+      {onUseLocalCloud ? <button onClick={onUseLocalCloud}><ClipboardCheck size={14} />{localCloudActionLabel}</button> : null}
+      {onUseAllComparable ? <button onClick={onUseAllComparable}><Boxes size={14} />{allComparableActionLabel}</button> : null}
       {onAddLocalTarget ? <button onClick={onAddLocalTarget}><Search size={14} />Detect runtime</button> : null}
       {onAddHfLocalModel ? <button onClick={onAddHfLocalModel}><Download size={14} />HF model</button> : null}
       {onAddCloudTarget ? <button onClick={onAddCloudTarget}><Boxes size={14} />Add cloud target</button> : null}
@@ -5275,6 +5284,18 @@ function LocalCloudRunReadinessPanel({
       {readiness.pricingRepairTargetIds.length && onRepairPricing ? <button title={errorCategoryRepairHint('pricing_assumption')} onClick={() => onRepairPricing(readiness.pricingRepairTargetIds)}><Pencil size={14} />Add pricing</button> : null}
     </div> : null}
   </div>;
+}
+
+function runBuilderComparisonShortcutLabel(targetIds: string[], fallback: string) {
+  return targetIds.length >= 2 ? `Compare ${targetIds.length} models` : fallback;
+}
+
+function runBuilderUseComparisonShortcutLabel(targetIds: string[]) {
+  return targetIds.length >= 2 ? `Use ${targetIds.length}-model comparison` : 'Use local + cloud';
+}
+
+function runBuilderUseAllComparisonShortcutLabel(targetIds: string[]) {
+  return targetIds.length >= 2 ? `Use all ${targetIds.length} models` : 'Use all comparable';
 }
 
 function targetShortcutHelp(label: string, targetIds: string[], unpricedCloudTargetIds: string[], targets: Target[]) {
@@ -5330,13 +5351,14 @@ function localCloudShortcutHelp(
   if (!targetIds.length) {
     return 'Add one enabled local model target and one enabled cloud model target';
   }
+  const scope = `${targetIds.length} comparable local/priced cloud target(s)`;
   if (selectedUnpricedCloudTargetIds.length) {
-    return `Select local and cloud targets for ${packName}. Add input/output pricing for ${previewList(targetLabelsById(selectedUnpricedCloudTargetIds, targets))} before running with the max-cost cap.`;
+    return `Select ${scope} for ${packName}. Add input/output pricing for ${previewList(targetLabelsById(selectedUnpricedCloudTargetIds, targets))} before running with the max-cost cap.`;
   }
   if (skippedUnpricedCloudTargetIds.length) {
-    return `Select local targets and priced cloud targets for ${packName}; skips unpriced cloud target(s): ${previewList(targetLabelsById(skippedUnpricedCloudTargetIds, targets))}.`;
+    return `Select ${scope} for ${packName}; skips unpriced cloud target(s): ${previewList(targetLabelsById(skippedUnpricedCloudTargetIds, targets))}.`;
   }
-  return `Select local and priced cloud targets for ${packName} with a ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap`;
+  return `Select ${scope} for ${packName} with a ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap`;
 }
 
 function RunValidationBlockerPanel({ blockers, targets, onRepair }: { blockers: TargetValidation[]; targets: Target[]; onRepair: (blocker: TargetValidation) => void }) {
@@ -5433,9 +5455,9 @@ function localCloudRunReadiness({
   if (hasBoth) {
     notes.push(`Selected ${selectedLocalCount} local and ${selectedCloudCount} cloud model target(s), so this run can produce side-by-side deployment evidence.`);
   } else if (hasLocal && availableCloudCount > 0) {
-    notes.push('Only local model targets are selected. Add a cloud target or use Local + cloud to make the run comparable.');
+    notes.push('Only local model targets are selected. Add a cloud target or use the local/cloud shortcut to make the run comparable.');
   } else if (hasCloud && availableLocalCount > 0) {
-    notes.push('Only cloud model targets are selected. Add a local target or use Local + cloud to make the run comparable.');
+    notes.push('Only cloud model targets are selected. Add a local target or use the local/cloud shortcut to make the run comparable.');
   } else {
     notes.push('Add at least one local model target and one cloud model target before treating results as a local/cloud comparison.');
   }
