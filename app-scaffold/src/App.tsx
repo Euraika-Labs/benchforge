@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Activity,
   Boxes,
@@ -800,6 +800,14 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     <Card title="Local runtimes" value={localRuntimeCheck.value} note={localRuntimeCheck.note} />
     <Card title="Sandbox" value={sandboxCheck.value} note={sandboxCheck.note} />
   </div>
+    <BenchmarkNextStepPanel
+      checks={checks}
+      openBenchmarkStep={() => openComparisonRun()}
+      primaryDisabled={primaryBenchmarkActionDisabled}
+      primaryTitle={primaryBenchmarkActionTitle}
+      primaryLabel={primaryBenchmarkActionLabel}
+      primaryIcon={comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}
+    />
     <DashboardModelSelectionPanel
       rankings={targetRankings}
       evidence={dashboardEvidence}
@@ -6117,7 +6125,21 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
   </section>;
 }
 
-function BenchmarkNextStepPanel({ checks, openBenchmarkStep }: { checks: DoctorCheck[]; openBenchmarkStep: (check: DoctorCheck) => void }) {
+function BenchmarkNextStepPanel({
+  checks,
+  openBenchmarkStep,
+  primaryDisabled = false,
+  primaryTitle,
+  primaryLabel,
+  primaryIcon,
+}: {
+  checks: DoctorCheck[];
+  openBenchmarkStep: (check: DoctorCheck) => void;
+  primaryDisabled?: boolean;
+  primaryTitle?: string;
+  primaryLabel?: string;
+  primaryIcon?: ReactNode;
+}) {
   const nextStep = dashboardCheck(checks, 'benchmark-next-step', 'Next benchmark step', 'warn', 'Add one local model target and one cloud model target');
   const stepChecks = [
     dashboardCheck(checks, 'benchmark-target-local', 'Local', 'warn', 'Add local target'),
@@ -6133,7 +6155,7 @@ function BenchmarkNextStepPanel({ checks, openBenchmarkStep }: { checks: DoctorC
     <p>{nextStep.detail}</p>
     {nextStep.remediation ? <p>{nextStep.remediation}</p> : null}
     <div className="actions">
-      <button onClick={() => openBenchmarkStep(nextStep)}>{nextBenchmarkStepIcon(nextStep)}{nextBenchmarkStepLabel(nextStep)}</button>
+      <button disabled={primaryDisabled} title={primaryTitle} onClick={() => openBenchmarkStep(nextStep)}>{primaryIcon ?? nextBenchmarkStepIcon(nextStep)}{primaryLabel ?? nextBenchmarkStepLabel(nextStep)}</button>
     </div>
     <div className="next-step-track">
       {stepChecks.map(check => <span key={check.id} className={check.status}><strong>{check.label}</strong>{check.status}</span>)}
@@ -6165,6 +6187,9 @@ function nextBenchmarkStepPage(check: DoctorCheck): Page {
 function nextBenchmarkStepLabel(check: DoctorCheck) {
   if (check.command.startsWith('Settings')) {
     return 'Set up local';
+  }
+  if (check.command.startsWith('Runs > Local + cloud')) {
+    return 'Run comparison';
   }
   if (check.command.startsWith('Targets > Repair local')) {
     return 'Repair local';
