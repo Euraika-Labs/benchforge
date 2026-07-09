@@ -1784,9 +1784,18 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const presetHint = defaultPreset
       ? `; ${defaultPreset.label} is prefilled with pricing, so you can add the target or search for another model`
       : '; search the catalog or enter a model manually';
-    const actionHint = setupIntent.code === 'missing_key' ? 'Paste the API key' : 'Review the provider setup';
+    const defaultActionHint = setupIntent.code === 'missing_key' ? 'Paste the API key' : 'Review the provider setup';
     const packHint = ` Automatic benchmark after add will use ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)}.`;
-    setMessage(`${actionHint} for ${adapter.name}${presetHint}.${packHint}`);
+    const showSetupMessage = (actionHint: string) => setMessage(`${actionHint} for ${adapter.name}${presetHint}.${packHint}`);
+    if (setupIntent.code === 'missing_key' && adapterNeedsApiKey(adapter, adapter.defaultBaseUrl ?? '')) {
+      providerApiKeyStatus(providerKeychainId(adapter, adapter.defaultBaseUrl ?? ''))
+        .then(status => {
+          showSetupMessage(status.available ? 'API key is already available' : defaultActionHint);
+        })
+        .catch(() => showSetupMessage(defaultActionHint));
+      return;
+    }
+    showSetupMessage(defaultActionHint);
   }, [setupIntent, runnableAdapters, modelBenchmarkPacks, packs, onSetupIntentConsumed, setMessage]);
 
   useEffect(() => {
@@ -3157,7 +3166,46 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setMessage(`Run Builder ready to compare ${localComparisonTargetIds.length} local and ${pricedCloudComparisonTargetIds.length} cloud target(s) with ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)}.${pricingNote}`);
   }
 
+  function plannedModelTargetFromForm() {
+    if (!selectedAdapter || !model.trim()) {
+      return null;
+    }
+    const parsedInputPrice = parseOptionalNonNegativeNumber(inputPrice, 'Input price');
+    const parsedOutputPrice = parseOptionalNonNegativeNumber(outputPrice, 'Output price');
+    const parsedCacheReadPrice = parseOptionalNonNegativeNumber(cacheReadPrice, 'Cache read price');
+    const parsedCacheWritePrice = parseOptionalNonNegativeNumber(cacheWritePrice, 'Cache write price');
+    if (parsedInputPrice.error || parsedOutputPrice.error || parsedCacheReadPrice.error || parsedCacheWritePrice.error) {
+      return null;
+    }
+    const name = targetName.trim() || `${selectedAdapter.name} ${model.trim()}`;
+    const id = editingTargetId || slugify(`${selectedAdapter.id}-${model.trim()}`);
+    return plannedModelTarget(id, name, selectedAdapter.id, baseUrl, {
+      inputPriceUsdPerMillionTokens: parsedInputPrice.value,
+      outputPriceUsdPerMillionTokens: parsedOutputPrice.value,
+      cacheReadPriceUsdPerMillionTokens: parsedCacheReadPrice.value,
+      cacheWritePriceUsdPerMillionTokens: parsedCacheWritePrice.value,
+    });
+  }
+
+  function modelTargetAddActionLabel() {
+    if (editingTargetId || !autoBenchmarkAfterAdd) {
+      return editingTargetId ? 'Update target' : 'Add target';
+    }
+    const plannedTarget = plannedModelTargetFromForm();
+    if (!plannedTarget) {
+      return 'Add target';
+    }
+    const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
+    const targetUniverse = targetListWithOverride(plannedTarget, targets);
+    const intent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
+    if (cappedIntentHasUnpricedCloudTarget(intent, targetUniverse)) {
+      return 'Add target';
+    }
+    return intent.targetIds.length > 1 ? 'Add + compare' : 'Add + run';
+  }
+
   const providerKeyState = providerKeyStatus(needsApiKey, providerKeyStatusBusy, providerKeyAvailable, apiKey, apiKeyEnv, providerKeyDetail);
+  const modelTargetActionLabel = modelTargetAddActionLabel();
 
   return <section><div className="section-head"><h1>Targets</h1><div className="actions"><button disabled={validating === 'all'} onClick={() => validateAll().catch(error => setMessage(String(error)))}><RefreshCw size={16} />Validate all</button><label className="compact-select">Compare pack <select value={comparisonPackId} onChange={event => setComparisonPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label><button disabled={comparisonActionDisabled} title={comparisonActionDisabled ? 'Add one enabled local model target and one enabled cloud model target' : comparisonNeedsCloudPricing ? 'Add input/output pricing to a cloud target before opening a capped comparison' : `Compare enabled local targets with ${pricedCloudComparisonTargetIds.length} priced cloud target(s)`} onClick={() => openAllLocalCloudComparison().catch(error => setMessage(String(error)))}>{comparisonNeedsCloudPricing ? <Pencil size={16} /> : <ClipboardCheck size={16} />}{comparisonNeedsCloudPricing ? 'Add cloud pricing' : 'Compare local/cloud'}</button><button onClick={() => addMock().catch(error => setMessage(String(error)))}><Plus size={16} />Mock target</button><button onClick={() => addWorkerHarness().catch(error => setMessage(String(error)))}><Plus size={16} />Worker harness</button></div></div>
     <div className="panel compact">
@@ -3191,7 +3239,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         </details>
         {!editingTargetId ? <label className="toggle"><input type="checkbox" checked={autoBenchmarkAfterAdd} onChange={event => setAutoBenchmarkAfterAdd(event.target.checked)} />Run benchmark after add</label> : null}
         {!editingTargetId ? <label>Benchmark pack <select value={autoBenchmarkPackId} disabled={!autoBenchmarkAfterAdd} onChange={event => setAutoBenchmarkPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label> : null}
-        <div className="form-actions"><button onClick={() => addModelTarget().catch(error => setMessage(String(error)))}>{editingTargetId ? <Pencil size={16} /> : <Plus size={16} />}{editingTargetId ? 'Update target' : 'Add target'}</button>{editingTargetId ? <button onClick={() => clearTargetForm()}><RotateCcw size={16} />Cancel</button> : null}</div>
+        <div className="form-actions"><button onClick={() => addModelTarget().catch(error => setMessage(String(error)))}>{editingTargetId ? <Pencil size={16} /> : <Plus size={16} />}{modelTargetActionLabel}</button>{editingTargetId ? <button onClick={() => clearTargetForm()}><RotateCcw size={16} />Cancel</button> : null}</div>
       </div>
       <div className="browser-controls">
         <input value={cloudModelQuery} onChange={event => setCloudModelQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') searchModels().catch(error => setMessage(String(error))); }} placeholder={`Search ${selectedAdapter?.name ?? 'cloud'} models`} />
