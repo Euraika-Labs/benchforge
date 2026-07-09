@@ -7876,6 +7876,7 @@ fn start_request_from_download_job(
         run_connectivity_after_start: job.run_connectivity_after_start,
         auto_benchmark_pack_id: job.auto_benchmark_pack_id.clone(),
         auto_compare_after_start: job.auto_compare_after_start,
+        auto_benchmark_target_ids: job.auto_benchmark_target_ids.clone(),
     })
 }
 
@@ -8100,6 +8101,30 @@ fn automatic_huggingface_benchmark_target_ids(
     server_job: &huggingface::HuggingFaceServerJobDto,
 ) -> Result<Vec<String>, String> {
     let mut target_ids = vec![local_target_id.to_string()];
+    if !server_job.auto_benchmark_target_ids.is_empty() {
+        let adapter_map = benchmark_adapter_map();
+        let target_map = store::list_targets(conn)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|target| (target.id.clone(), target))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for requested_id in &server_job.auto_benchmark_target_ids {
+            if requested_id == local_target_id || target_ids.contains(requested_id) {
+                continue;
+            }
+            let Some(target) = target_map.get(requested_id) else {
+                continue;
+            };
+            if target.enabled
+                && !target_validation_is_error(target)
+                && target_is_cloud_benchmark_model(target, &adapter_map)
+                && target_has_input_output_pricing(target)
+            {
+                target_ids.push(requested_id.clone());
+            }
+        }
+        return Ok(target_ids);
+    }
     if !server_job.auto_compare_after_start {
         return Ok(target_ids);
     }
@@ -12976,6 +13001,7 @@ pub fn run_cli_hf_search_smoke() -> Result<serde_json::Value, String> {
         run_connectivity_after_start: false,
         auto_benchmark_pack_id: None,
         auto_compare_after_start: false,
+        auto_benchmark_target_ids: vec![],
         start_port: None,
         start_context: None,
     })?;
@@ -13078,6 +13104,7 @@ pub fn run_cli_hf_local_cloud_smoke() -> Result<serde_json::Value, String> {
         run_connectivity_after_start: false,
         auto_benchmark_pack_id: None,
         auto_compare_after_start: false,
+        auto_benchmark_target_ids: vec![],
         start_port: None,
         start_context: None,
     })?;
@@ -13093,6 +13120,7 @@ pub fn run_cli_hf_local_cloud_smoke() -> Result<serde_json::Value, String> {
             run_connectivity_after_start: false,
             auto_benchmark_pack_id: None,
             auto_compare_after_start: false,
+            auto_benchmark_target_ids: vec![],
         },
     ) {
         Ok(status) => status,
@@ -13137,6 +13165,7 @@ pub fn run_cli_hf_local_cloud_basics_smoke() -> Result<serde_json::Value, String
         run_connectivity_after_start: false,
         auto_benchmark_pack_id: None,
         auto_compare_after_start: false,
+        auto_benchmark_target_ids: vec![],
         start_port: None,
         start_context: None,
     })?;
@@ -13152,6 +13181,7 @@ pub fn run_cli_hf_local_cloud_basics_smoke() -> Result<serde_json::Value, String
             run_connectivity_after_start: false,
             auto_benchmark_pack_id: None,
             auto_compare_after_start: false,
+            auto_benchmark_target_ids: vec![],
         },
     ) {
         Ok(status) => status,
@@ -13222,6 +13252,7 @@ pub fn run_cli_hf_download_start_job_smoke() -> Result<serde_json::Value, String
                 run_connectivity_after_start: true,
                 auto_benchmark_pack_id: Some(HF_LOCAL_CLOUD_PACK_ID.into()),
                 auto_compare_after_start: true,
+                auto_benchmark_target_ids: vec![],
                 start_port: Some(port),
                 start_context: Some(HF_LOCAL_CLOUD_CONTEXT),
             },
@@ -13351,6 +13382,7 @@ pub fn run_cli_hf_server_start_job_smoke() -> Result<serde_json::Value, String> 
         run_connectivity_after_start: false,
         auto_benchmark_pack_id: None,
         auto_compare_after_start: false,
+        auto_benchmark_target_ids: vec![],
         start_port: None,
         start_context: None,
     })?;
@@ -13363,6 +13395,7 @@ pub fn run_cli_hf_server_start_job_smoke() -> Result<serde_json::Value, String> 
         run_connectivity_after_start: true,
         auto_benchmark_pack_id: Some(HF_LOCAL_CLOUD_PACK_ID.into()),
         auto_compare_after_start: false,
+        auto_benchmark_target_ids: vec![],
     })?;
     let server_job = {
         let conn = state
@@ -20430,6 +20463,7 @@ mod tests {
             run_connectivity_after_start: true,
             auto_benchmark_pack_id: Some("llm-basics".into()),
             auto_compare_after_start: true,
+            auto_benchmark_target_ids: vec!["hf-local-target".into(), "cloud-priced".into()],
             start_port: Some(18080),
             start_context: Some(4096),
         };
@@ -20448,6 +20482,10 @@ mod tests {
             Some("llm-basics")
         );
         assert!(request.auto_compare_after_start);
+        assert_eq!(
+            request.auto_benchmark_target_ids,
+            vec!["hf-local-target".to_string(), "cloud-priced".to_string()]
+        );
     }
 
     #[test]
@@ -20493,6 +20531,7 @@ mod tests {
             run_connectivity_after_start: true,
             auto_benchmark_pack_id: Some("llm-basics".into()),
             auto_compare_after_start: false,
+            auto_benchmark_target_ids: vec![],
         };
 
         let target = target_from_huggingface_server_job(&job, &status);
@@ -20586,6 +20625,7 @@ mod tests {
             run_connectivity_after_start: true,
             auto_benchmark_pack_id: Some("llm-basics".into()),
             auto_compare_after_start: true,
+            auto_benchmark_target_ids: vec![],
         };
 
         let target_ids =
@@ -20593,6 +20633,53 @@ mod tests {
                 .expect("target ids should build");
 
         assert_eq!(target_ids, vec!["hf-local-target", "cloud-priced"]);
+    }
+
+    #[test]
+    fn hf_auto_compare_honors_explicit_cloud_counterpart() {
+        let conn = store::open_memory().expect("store should open");
+        for (id, model) in [("cloud-alpha", "alpha/model"), ("cloud-beta", "beta/model")] {
+            store::upsert_target(
+                &conn,
+                &store::NewTarget {
+                    id: id.into(),
+                    name: id.into(),
+                    kind: "direct_model".into(),
+                    adapter_id: "openrouter".into(),
+                    config: serde_json::json!({
+                        "base_url": "https://openrouter.ai/api/v1",
+                        "model": model,
+                        "input_price_usd_per_million_tokens": 0.25,
+                        "output_price_usd_per_million_tokens": 1.0
+                    }),
+                },
+            )
+            .expect("priced cloud target should save");
+        }
+        let server_job = huggingface::HuggingFaceServerJobDto {
+            id: "server-job".into(),
+            repo_id: "org/model-GGUF".into(),
+            selected_file: Some("model.Q4_K_M.gguf".into()),
+            port: 18080,
+            context: 4096,
+            status: "completed".into(),
+            message: "ready".into(),
+            started_at: "2026-07-07T12:00:00Z".into(),
+            finished_at: Some("2026-07-07T12:01:00Z".into()),
+            error: None,
+            server_status: None,
+            register_target_after_start: true,
+            run_connectivity_after_start: true,
+            auto_benchmark_pack_id: Some("llm-basics".into()),
+            auto_compare_after_start: true,
+            auto_benchmark_target_ids: vec!["hf-local-target".into(), "cloud-beta".into()],
+        };
+
+        let target_ids =
+            automatic_huggingface_benchmark_target_ids(&conn, "hf-local-target", &server_job)
+                .expect("target ids should build");
+
+        assert_eq!(target_ids, vec!["hf-local-target", "cloud-beta"]);
     }
 
     fn target_request(

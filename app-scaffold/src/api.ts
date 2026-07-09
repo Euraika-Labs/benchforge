@@ -1064,6 +1064,7 @@ export interface HuggingFaceDownloadJobOptions {
   runConnectivityAfterStart?: boolean;
   autoBenchmarkPackId?: string;
   autoCompareAfterStart?: boolean;
+  autoBenchmarkTargetIds?: string[];
   startPort?: number;
   startContext?: number;
 }
@@ -1073,6 +1074,7 @@ export interface HuggingFaceServerJobOptions {
   runConnectivityAfterStart?: boolean;
   autoBenchmarkPackId?: string;
   autoCompareAfterStart?: boolean;
+  autoBenchmarkTargetIds?: string[];
 }
 
 export async function startHuggingFaceDownloadJob(repoId: string, filename?: string, revision?: string, options: HuggingFaceDownloadJobOptions = {}): Promise<HuggingFaceDownloadJob> {
@@ -1095,6 +1097,7 @@ export async function startHuggingFaceDownloadJob(repoId: string, filename?: str
       runConnectivityAfterStart: Boolean(options.runConnectivityAfterStart),
       autoBenchmarkPackId: options.autoBenchmarkPackId ?? null,
       autoCompareAfterStart: Boolean(options.autoCompareAfterStart),
+      autoBenchmarkTargetIds: options.autoBenchmarkTargetIds ?? [],
       startPort: options.startPort ?? null,
       startContext: options.startContext ?? null,
     };
@@ -1221,6 +1224,7 @@ export async function startHuggingFaceServerJob(repoId: string, filename: string
       runConnectivityAfterStart: Boolean(options.runConnectivityAfterStart),
       autoBenchmarkPackId: options.autoBenchmarkPackId ?? null,
       autoCompareAfterStart: Boolean(options.autoCompareAfterStart),
+      autoBenchmarkTargetIds: options.autoBenchmarkTargetIds ?? [],
     };
   }
   return invoke<HuggingFaceServerJob>('start_huggingface_server_job', { request: { repoId, filename, port, context, ...options } });

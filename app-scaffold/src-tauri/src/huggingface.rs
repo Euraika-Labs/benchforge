@@ -204,6 +204,8 @@ pub struct DownloadModelRequest {
     #[serde(default)]
     pub auto_compare_after_start: bool,
     #[serde(default)]
+    pub auto_benchmark_target_ids: Vec<String>,
+    #[serde(default)]
     pub start_port: Option<u16>,
     #[serde(default)]
     pub start_context: Option<u32>,
@@ -243,6 +245,7 @@ pub struct HuggingFaceDownloadJobDto {
     pub run_connectivity_after_start: bool,
     pub auto_benchmark_pack_id: Option<String>,
     pub auto_compare_after_start: bool,
+    pub auto_benchmark_target_ids: Vec<String>,
     pub start_port: Option<u16>,
     pub start_context: Option<u32>,
 }
@@ -273,6 +276,8 @@ pub struct StartModelRequest {
     pub auto_benchmark_pack_id: Option<String>,
     #[serde(default)]
     pub auto_compare_after_start: bool,
+    #[serde(default)]
+    pub auto_benchmark_target_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -293,6 +298,7 @@ pub struct HuggingFaceServerJobDto {
     pub run_connectivity_after_start: bool,
     pub auto_benchmark_pack_id: Option<String>,
     pub auto_compare_after_start: bool,
+    pub auto_benchmark_target_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -926,10 +932,12 @@ fn run_download_command(
 
 pub fn start_download_job(
     conn: &Connection,
-    request: DownloadModelRequest,
+    mut request: DownloadModelRequest,
 ) -> Result<HuggingFaceDownloadJobDto, String> {
     validate_repo_id(&request.repo_id)?;
     let selected_file = normalized_optional_filename(request.filename.as_deref())?;
+    request.auto_benchmark_target_ids =
+        normalized_benchmark_target_ids(&request.auto_benchmark_target_ids);
     if request.start_after_download {
         validate_local_server_settings(
             request.start_port.unwrap_or_else(default_port),
@@ -1098,6 +1106,7 @@ fn download_job_from_record(
     let auto_benchmark_pack_id =
         auto_benchmark_pack_from_request(&record.request, run_connectivity_after_start);
     let auto_compare_after_start = request_bool(&record.request, "autoCompareAfterStart");
+    let auto_benchmark_target_ids = request_string_array(&record.request, "autoBenchmarkTargetIds");
     let start_port = request_u16(&record.request, "startPort");
     let start_context = request_u32(&record.request, "startContext");
     let model = record
@@ -1132,6 +1141,7 @@ fn download_job_from_record(
         run_connectivity_after_start,
         auto_benchmark_pack_id,
         auto_compare_after_start,
+        auto_benchmark_target_ids,
         start_port,
         start_context,
     })
@@ -1171,6 +1181,10 @@ fn download_request_from_job(record: &store::HfDownloadJobRecord) -> DownloadMod
                 request_bool(&record.request, "runConnectivityAfterStart"),
             ),
             auto_compare_after_start: request_bool(&record.request, "autoCompareAfterStart"),
+            auto_benchmark_target_ids: request_string_array(
+                &record.request,
+                "autoBenchmarkTargetIds",
+            ),
             start_port: request_u16(&record.request, "startPort"),
             start_context: request_u32(&record.request, "startContext"),
         });
@@ -1193,6 +1207,8 @@ pub fn normalize_start_request(
 ) -> Result<StartModelRequest, String> {
     validate_repo_id(&request.repo_id)?;
     request.filename = normalized_optional_filename(request.filename.as_deref())?;
+    request.auto_benchmark_target_ids =
+        normalized_benchmark_target_ids(&request.auto_benchmark_target_ids);
     validate_local_server_settings(request.port, request.context)?;
     Ok(request)
 }
@@ -1362,6 +1378,7 @@ fn server_job_from_record(
     let auto_benchmark_pack_id =
         auto_benchmark_pack_from_request(&record.request, run_connectivity_after_start);
     let auto_compare_after_start = request_bool(&record.request, "autoCompareAfterStart");
+    let auto_benchmark_target_ids = request_string_array(&record.request, "autoBenchmarkTargetIds");
     let server_status = record
         .server_status
         .map(serde_json::from_value::<HuggingFaceStatusDto>)
@@ -1383,6 +1400,7 @@ fn server_job_from_record(
         run_connectivity_after_start,
         auto_benchmark_pack_id,
         auto_compare_after_start,
+        auto_benchmark_target_ids,
     })
 }
 
@@ -1416,6 +1434,34 @@ fn request_string(request: &serde_json::Value, field: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn request_string_array(request: &serde_json::Value, field: &str) -> Vec<String> {
+    let values = request
+        .get(field)
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    normalized_benchmark_target_ids(&values)
+}
+
+fn normalized_benchmark_target_ids(values: &[String]) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    values
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .filter(|value| seen.insert((*value).to_string()))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
 fn auto_benchmark_pack_from_request(
     request: &serde_json::Value,
     run_connectivity_after_start: bool,
@@ -1441,6 +1487,10 @@ fn server_request_from_job(record: &store::HfServerJobRecord) -> StartModelReque
                 request_bool(&record.request, "runConnectivityAfterStart"),
             ),
             auto_compare_after_start: request_bool(&record.request, "autoCompareAfterStart"),
+            auto_benchmark_target_ids: request_string_array(
+                &record.request,
+                "autoBenchmarkTargetIds",
+            ),
         });
     if request.repo_id.trim().is_empty() {
         request.repo_id = record.repo_id.clone();
@@ -3878,6 +3928,7 @@ mod tests {
             run_connectivity_after_start: false,
             auto_benchmark_pack_id: None,
             auto_compare_after_start: false,
+            auto_benchmark_target_ids: vec![],
         })
         .expect("preflight should run");
         assert_eq!(result.status, "error");
@@ -4121,6 +4172,7 @@ mod tests {
             run_connectivity_after_start: false,
             auto_benchmark_pack_id: None,
             auto_compare_after_start: false,
+            auto_benchmark_target_ids: vec![],
             start_port: None,
             start_context: None,
         };
@@ -4179,6 +4231,7 @@ mod tests {
                 "startAfterDownload": true,
                 "runConnectivityAfterStart": true,
                 "autoBenchmarkPackId": "llm-basics",
+                "autoBenchmarkTargetIds": ["hf-local-target", "cloud-priced"],
                 "startPort": 8081,
                 "startContext": 4096
             }),
@@ -4222,6 +4275,7 @@ mod tests {
                 run_connectivity_after_start: true,
                 auto_benchmark_pack_id: Some("llm-basics".into()),
                 auto_compare_after_start: false,
+                auto_benchmark_target_ids: vec![],
                 start_port: Some(80),
                 start_context: Some(2048),
             },
@@ -4253,6 +4307,7 @@ mod tests {
                 "startAfterDownload": true,
                 "runConnectivityAfterStart": true,
                 "autoBenchmarkPackId": "llm-basics",
+                "autoBenchmarkTargetIds": ["hf-local-target", "cloud-priced"],
                 "startPort": 8081,
                 "startContext": 4096
             }),
@@ -4270,6 +4325,10 @@ mod tests {
         assert_eq!(
             request.auto_benchmark_pack_id.as_deref(),
             Some("llm-basics")
+        );
+        assert_eq!(
+            request.auto_benchmark_target_ids,
+            vec!["hf-local-target".to_string(), "cloud-priced".to_string()]
         );
         assert_eq!(request.start_port, Some(8081));
         assert_eq!(request.start_context, Some(4096));
@@ -4441,7 +4500,8 @@ mod tests {
                 "context": 2048,
                 "registerTargetAfterStart": true,
                 "runConnectivityAfterStart": true,
-                "autoBenchmarkPackId": "llm-basics"
+                "autoBenchmarkPackId": "llm-basics",
+                "autoBenchmarkTargetIds": ["hf-local-target", "cloud-priced"]
             }),
             server_status: Some(serde_json::json!({
                 "tokenAvailable": true,
@@ -4490,7 +4550,8 @@ mod tests {
                 "context": 4096,
                 "registerTargetAfterStart": true,
                 "runConnectivityAfterStart": true,
-                "autoBenchmarkPackId": "llm-basics"
+                "autoBenchmarkPackId": "llm-basics",
+                "autoBenchmarkTargetIds": ["hf-local-target", "cloud-priced"]
             }),
             server_status: None,
         };
@@ -4506,6 +4567,10 @@ mod tests {
         assert_eq!(
             request.auto_benchmark_pack_id.as_deref(),
             Some("llm-basics")
+        );
+        assert_eq!(
+            request.auto_benchmark_target_ids,
+            vec!["hf-local-target".to_string(), "cloud-priced".to_string()]
         );
 
         let legacy_record = store::HfServerJobRecord {

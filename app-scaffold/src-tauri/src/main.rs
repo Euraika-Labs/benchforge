@@ -442,6 +442,7 @@ fn main() {
             run_connectivity_after_start: false,
             auto_benchmark_pack_id: None,
             auto_compare_after_start: false,
+            auto_benchmark_target_ids: vec![],
             start_port: None,
             start_context: None,
         }) {
@@ -652,6 +653,7 @@ fn run_cli_hf_local_smoke() -> Result<serde_json::Value, String> {
         run_connectivity_after_start: false,
         auto_benchmark_pack_id: None,
         auto_compare_after_start: false,
+        auto_benchmark_target_ids: vec![],
         start_port: None,
         start_context: None,
     })?;
@@ -667,6 +669,7 @@ fn run_cli_hf_local_smoke() -> Result<serde_json::Value, String> {
             run_connectivity_after_start: false,
             auto_benchmark_pack_id: None,
             auto_compare_after_start: false,
+            auto_benchmark_target_ids: vec![],
         },
     ) {
         Ok(status) => status,
@@ -776,6 +779,7 @@ fn run_cli_hf_download_job_smoke() -> Result<serde_json::Value, String> {
             run_connectivity_after_start: false,
             auto_benchmark_pack_id: None,
             auto_compare_after_start: false,
+            auto_benchmark_target_ids: vec![],
             start_port: None,
             start_context: None,
         },
@@ -818,6 +822,7 @@ fn run_cli_hf_server_job_smoke() -> Result<serde_json::Value, String> {
         run_connectivity_after_start: false,
         auto_benchmark_pack_id: None,
         auto_compare_after_start: false,
+        auto_benchmark_target_ids: vec![],
         start_port: None,
         start_context: None,
     })?;
@@ -830,6 +835,7 @@ fn run_cli_hf_server_job_smoke() -> Result<serde_json::Value, String> {
         run_connectivity_after_start: false,
         auto_benchmark_pack_id: None,
         auto_compare_after_start: false,
+        auto_benchmark_target_ids: vec![],
     })?;
     let job = {
         let conn = state

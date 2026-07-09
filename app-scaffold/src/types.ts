@@ -460,6 +460,7 @@ export interface HuggingFaceDownloadJob {
   runConnectivityAfterStart?: boolean;
   autoBenchmarkPackId?: string | null;
   autoCompareAfterStart?: boolean;
+  autoBenchmarkTargetIds?: string[];
   startPort?: number | null;
   startContext?: number | null;
 }
@@ -480,6 +481,7 @@ export interface HuggingFaceServerJob {
   runConnectivityAfterStart?: boolean;
   autoBenchmarkPackId?: string | null;
   autoCompareAfterStart?: boolean;
+  autoBenchmarkTargetIds?: string[];
 }
 
 export interface GgufFileDetail {
