@@ -10441,6 +10441,23 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
             <small>{step.detail}</small>
           </span>)}
         </div>
+        <div className="handoff-controls">
+          <label className="toggle"><input type="checkbox" checked={autoStartAfterDownload} onChange={event => setAutoStartAfterDownload(event.target.checked)} />Start after download</label>
+          <label className="toggle"><input type="checkbox" checked={autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkAfterStart(event.target.checked)} />Run benchmark after start</label>
+          <label className="toggle" title={selectablePricedCloudTargetCount ? 'Include the selected priced cloud target in the automatic benchmark' : selectableCloudTargetCount ? 'Add input/output pricing to a cloud target before automatic local/cloud comparison' : 'Add a selectable cloud target before automatic local/cloud comparison'}>
+            <input
+              type="checkbox"
+              checked={autoCompareAfterStart && Boolean(selectedAutoCompareCloudTarget)}
+              disabled={!autoBenchmarkAfterStart || !selectablePricedCloudTargetCount}
+              onChange={event => setAutoCompareAfterStart(event.target.checked)}
+            />
+            Compare with cloud target
+          </label>
+          {selectablePricedCloudTargets.length ? <label>Cloud target <select value={selectedAutoCompareCloudTarget?.id ?? ''} disabled={!autoBenchmarkAfterStart || !autoCompareAfterStart} onChange={event => setAutoCompareCloudTargetId(event.target.value)}>
+            {selectablePricedCloudTargets.map(target => <option key={target.id} value={target.id}>{hfCloudTargetLabel(target)}</option>)}
+          </select></label> : null}
+          <label>Benchmark pack <select value={autoBenchmarkPackId} disabled={!autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
+        </div>
       </div>
       <h2>Browse Hub Models</h2>
       <div className="browser-controls">
@@ -10479,21 +10496,6 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
           <summary><SlidersHorizontal size={14} />Advanced</summary>
           <div className="form-grid">
             <label>Revision <input value={revision} onChange={event => { setRevision(event.target.value); setModelFileDetails([]); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }} placeholder="main, tag, branch, or commit" /></label>
-            <label className="toggle"><input type="checkbox" checked={autoStartAfterDownload} onChange={event => setAutoStartAfterDownload(event.target.checked)} />Start after download</label>
-            <label className="toggle"><input type="checkbox" checked={autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkAfterStart(event.target.checked)} />Run benchmark after start</label>
-            <label className="toggle" title={selectablePricedCloudTargetCount ? 'Include the selected priced cloud target in the automatic benchmark' : selectableCloudTargetCount ? 'Add input/output pricing to a cloud target before automatic local/cloud comparison' : 'Add a selectable cloud target before automatic local/cloud comparison'}>
-              <input
-                type="checkbox"
-                checked={autoCompareAfterStart && Boolean(selectedAutoCompareCloudTarget)}
-                disabled={!autoBenchmarkAfterStart || !selectablePricedCloudTargetCount}
-                onChange={event => setAutoCompareAfterStart(event.target.checked)}
-              />
-              Compare with cloud target
-            </label>
-            {selectablePricedCloudTargets.length ? <label>Cloud target <select value={selectedAutoCompareCloudTarget?.id ?? ''} disabled={!autoBenchmarkAfterStart || !autoCompareAfterStart} onChange={event => setAutoCompareCloudTargetId(event.target.value)}>
-              {selectablePricedCloudTargets.map(target => <option key={target.id} value={target.id}>{hfCloudTargetLabel(target)}</option>)}
-            </select></label> : null}
-            <label>Benchmark pack <select value={autoBenchmarkPackId} disabled={!autoBenchmarkAfterStart} onChange={event => setAutoBenchmarkPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
             <label>Port <input type="number" min="1024" max="65535" step="1" value={port} onChange={event => setPort(Number(event.target.value))} /></label>
             <label>Context <input type="number" min="128" max="131072" step="1" value={context} onChange={event => { setContext(Number(event.target.value)); setPreflight(null); }} /></label>
             <button disabled={busy || preflightBusy || !repoId.trim()} onClick={() => runPreflight().catch(error => setMessage(String(error)))}><ShieldCheck size={16} />{preflightBusy ? 'Checking' : 'Check'}</button>
