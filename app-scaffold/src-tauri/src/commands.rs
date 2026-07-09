@@ -11747,15 +11747,15 @@ fn validation_error_code(stage: &str, error: &str) -> &'static str {
         || lower.contains("rate_limit")
         || lower.contains("too many requests")
         || lower.contains("quota")
-        || lower.contains("429")
+        || contains_http_status_code(&lower, "429")
     {
         return "rate_limited";
     }
     if lower.contains("unauthorized")
         || lower.contains("authentication")
         || lower.contains("invalid api key")
-        || lower.contains("401")
-        || lower.contains("403")
+        || contains_http_status_code(&lower, "401")
+        || contains_http_status_code(&lower, "403")
         || lower.contains("forbidden")
         || lower.contains("permission")
     {
@@ -11774,7 +11774,7 @@ fn validation_error_code(stage: &str, error: &str) -> &'static str {
         || lower.contains("model not found")
         || lower.contains("unknown model")
         || lower.contains("does not exist")
-        || (lower.contains("404") && !stage.to_lowercase().contains("endpoint"))
+        || (contains_http_status_code(&lower, "404") && !stage.to_lowercase().contains("endpoint"))
     {
         return "model_not_found";
     }
@@ -11789,17 +11789,30 @@ fn validation_error_code(stage: &str, error: &str) -> &'static str {
         || lower.contains("internal error")
         || lower.contains("bad gateway")
         || lower.contains("service unavailable")
-        || lower.contains("500")
-        || lower.contains("502")
-        || lower.contains("503")
-        || lower.contains("504")
+        || contains_http_status_code(&lower, "500")
+        || contains_http_status_code(&lower, "502")
+        || contains_http_status_code(&lower, "503")
+        || contains_http_status_code(&lower, "504")
     {
         return "server_error";
     }
-    if lower.contains("404") {
+    if contains_http_status_code(&lower, "404") {
         return "endpoint_unreachable";
     }
     "provider_failed"
+}
+
+fn contains_http_status_code(text: &str, code: &str) -> bool {
+    text.match_indices(code).any(|(index, _)| {
+        let before = text[..index].chars().next_back();
+        let after = text[index + code.len()..].chars().next();
+        is_http_status_boundary(before) && is_http_status_boundary(after)
+    })
+}
+
+fn is_http_status_boundary(ch: Option<char>) -> bool {
+    ch.map(|value| !value.is_ascii_alphanumeric())
+        .unwrap_or(true)
 }
 
 fn truncate_validation_detail(detail: &str, max_chars: usize) -> String {
@@ -22202,6 +22215,13 @@ mod tests {
             validation_error_code(
                 "endpoint check",
                 "curl: (7) Failed to connect to localhost port 8080"
+            ),
+            "endpoint_unreachable"
+        );
+        assert_eq!(
+            validation_error_code(
+                "endpoint check",
+                "curl: (7) Failed to connect to 127.0.0.1 port 54296 after 0 ms"
             ),
             "endpoint_unreachable"
         );

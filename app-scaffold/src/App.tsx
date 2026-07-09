@@ -4433,6 +4433,13 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const runCostPricingRepairTargetIds = costLimitMessage && runEstimate?.unpricedTargets.length
     ? runEstimate.unpricedTargets
     : [];
+  const recommendedRunCostCapUsd = costLimitMessage
+    && !runCostPricingRepairTargetIds.length
+    && runEstimate?.estimatedMaxCostUsd != null
+    && parsedMaxCostUsd.value != null
+    && runEstimate.estimatedMaxCostUsd > parsedMaxCostUsd.value
+    ? runEstimate.estimatedMaxCostUsd
+    : undefined;
   const canAdjustRunCostCap = Boolean(costLimitMessage && !runCostPricingRepairTargetIds.length);
   const estimatedRuns = selected.length * Math.max(1, parsedRepetitions.value ?? 1) * selectedTaskCount;
   const estimatedWarmups = selected.length * (parsedWarmupRuns.value ?? 0);
@@ -4949,6 +4956,10 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     setMaxCostUsd(String(value));
     setMessage(`Set max-cost cap to ${formatCost(value)} for selected cloud target(s)`);
   }
+  function applyEstimatedRunCostCap(value: number) {
+    setMaxCostUsd(String(value));
+    setMessage(`Raised max-cost cap to ${formatCost(value)} for this estimated run`);
+  }
   function applyRecommendedComparisonDefaults() {
     setRepetitions(String(recommendedTaskRepetitions));
     setWarmupRuns('1');
@@ -5043,8 +5054,10 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       {runSettingsError ? <RunSettingsBlockerPanel
         message={runSettingsError}
         pricingRepairTargetIds={runCostPricingRepairTargetIds}
+        recommendedCostCapUsd={recommendedRunCostCapUsd}
         canAdjustCostCap={canAdjustRunCostCap}
         onRepairPricing={repairRunPricingBlockers}
+        onUseCostCap={applyEstimatedRunCostCap}
         onAdjustCostCap={() => setRunAdvancedOpen(true)}
       /> : <RunEstimatePanel estimate={runEstimate} error={estimateError} fallbackRuns={estimatedRuns} fallbackWarmups={estimatedWarmups} selectedTargets={selected.length} packTasks={selectedTaskCount} repetitions={parsedRepetitions.value ?? 1} concurrency={parsedConcurrency.value ?? 1} maxCostUsd={parsedMaxCostUsd.value} />}
       <div className="row-actions target-shortcuts">
@@ -5239,22 +5252,27 @@ function RunValidationBlockerPanel({ blockers, targets, onRepair }: { blockers: 
 function RunSettingsBlockerPanel({
   message,
   pricingRepairTargetIds,
+  recommendedCostCapUsd,
   canAdjustCostCap,
   onRepairPricing,
+  onUseCostCap,
   onAdjustCostCap,
 }: {
   message: string;
   pricingRepairTargetIds: string[];
+  recommendedCostCapUsd?: number;
   canAdjustCostCap: boolean;
   onRepairPricing: (targetIds: string[]) => void;
+  onUseCostCap: (value: number) => void;
   onAdjustCostCap: () => void;
 }) {
-  const hasActions = Boolean(pricingRepairTargetIds.length || canAdjustCostCap);
+  const hasActions = Boolean(pricingRepairTargetIds.length || recommendedCostCapUsd != null || canAdjustCostCap);
   return <div className="preflight-box warn">
     <strong>Run Blocked</strong>
     <p>{message}</p>
     {hasActions ? <div className="row-actions">
       {pricingRepairTargetIds.length ? <button title={errorCategoryRepairHint('pricing_assumption')} onClick={() => onRepairPricing(pricingRepairTargetIds)}><Pencil size={14} />Add pricing</button> : null}
+      {recommendedCostCapUsd != null ? <button onClick={() => onUseCostCap(recommendedCostCapUsd)}><ShieldCheck size={14} />Use {formatCost(recommendedCostCapUsd)} cap</button> : null}
       {canAdjustCostCap ? <button onClick={onAdjustCostCap}><SlidersHorizontal size={14} />Adjust cap</button> : null}
     </div> : null}
   </div>;
