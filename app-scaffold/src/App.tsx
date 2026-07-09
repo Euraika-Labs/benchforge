@@ -9978,6 +9978,10 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
   const cloudComparisonNeedsPricing = Boolean(selectableCloudTargetCount && unpricedCloudComparisonTargetIds.length && !selectablePricedCloudTargetCount);
   const autoCompareReady = autoBenchmarkAfterStart && Boolean(selectedAutoCompareCloudTarget);
   const cloudComparisonStatus = hfCloudComparisonStatus(selectableCloudTargetCount, selectablePricedCloudTargetCount);
+  const cloudComparisonActionLabel = cloudComparisonNeedsPricing ? 'Add pricing' : 'Add cloud target';
+  const cloudComparisonActionTitle = cloudComparisonNeedsPricing
+    ? 'Add input/output pricing to an existing cloud target'
+    : 'Create and validate a cloud target for automatic comparison';
   const autoCompareCloudTargetLabel = selectedAutoCompareCloudTarget ? hfCloudTargetLabel(selectedAutoCompareCloudTarget) : '';
   const hfHandoffSteps = hfAutomaticHandoffSteps({
     repoId: repoId.trim(),
@@ -10817,12 +10821,16 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
           <label className="toggle" title={selectablePricedCloudTargetCount ? 'Include the selected priced cloud target in the automatic benchmark' : selectableCloudTargetCount ? 'Add input/output pricing to a cloud target before automatic local/cloud comparison' : 'Add a selectable cloud target before automatic local/cloud comparison'}>
             <input
               type="checkbox"
-              checked={autoCompareAfterStart && Boolean(selectedAutoCompareCloudTarget)}
-              disabled={!autoBenchmarkAfterStart || !selectablePricedCloudTargetCount}
+              checked={autoCompareAfterStart}
+              disabled={!autoBenchmarkAfterStart}
               onChange={event => setAutoCompareAfterStart(event.target.checked)}
             />
             Compare with cloud target
           </label>
+          {autoBenchmarkAfterStart && autoCompareAfterStart && !selectablePricedCloudTargetCount ? <div className="handoff-remedy">
+            <span className="mini-tag warn">{selectableCloudTargetCount ? 'pricing needed' : 'cloud target needed'}</span>
+            <button type="button" title={cloudComparisonActionTitle} onClick={openCloudComparisonSetup}>{cloudComparisonNeedsPricing ? <Pencil size={14} /> : <Boxes size={14} />}{cloudComparisonActionLabel}</button>
+          </div> : null}
           {selectablePricedCloudTargets.length ? <label>Cloud target <select value={selectedAutoCompareCloudTarget?.id ?? ''} disabled={!autoBenchmarkAfterStart || !autoCompareAfterStart} onChange={event => setAutoCompareCloudTargetId(event.target.value)}>
             {selectablePricedCloudTargets.map(target => <option key={target.id} value={target.id}>{hfCloudTargetLabel(target)}</option>)}
           </select></label> : null}
@@ -10876,7 +10884,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
       </div>
       {downloadPlan ? <div className={`preflight-box ${downloadPlan.alreadyDownloaded ? 'ok' : downloadFailed ? 'warn' : ''}`}><strong>Download plan</strong><p>{downloadPlan.summary}</p><div className="mini-grid"><span>{downloadPlan.plannedBytes ? formatBytes(downloadPlan.plannedBytes) : 'size unknown'}</span><span>{downloadPlan.existingBytes ? `${formatBytes(downloadPlan.existingBytes)} local` : 'no complete local file'}</span><span>{downloadPlan.partialBytes ? `${formatBytes(downloadPlan.partialBytes)} partial` : 'no partial fragments'}</span><span>{downloadPlan.alreadyDownloaded ? 'already downloaded' : 'needs transfer'}</span></div><p className="muted">{downloadPlan.diskCheck} {downloadPlan.retryHint}</p><p className="muted">{downloadPlan.localDir}</p></div> : null}
       {autoBenchmarkAfterStart && !autoCompareReady ? <div className="preflight-box warn">
-        <div className="panel-head"><h2>Cloud comparison</h2><button onClick={openCloudComparisonSetup}>{cloudComparisonNeedsPricing ? <Pencil size={14} /> : <Boxes size={14} />}{cloudComparisonNeedsPricing ? 'Add pricing' : 'Cloud target'}</button></div>
+        <div className="panel-head"><h2>Cloud comparison</h2><button title={cloudComparisonActionTitle} onClick={openCloudComparisonSetup}>{cloudComparisonNeedsPricing ? <Pencil size={14} /> : <Boxes size={14} />}{cloudComparisonActionLabel}</button></div>
         <p>{cloudComparisonStatus} The local model flow will still create a target and run the selected pack locally.</p>
       </div> : null}
       {downloadProgress ? <DownloadProgressPanel progress={downloadProgress} /> : null}

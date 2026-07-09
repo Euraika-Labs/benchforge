@@ -11133,6 +11133,28 @@ fn curl_get_with_timeout(
     if !adapters::command_exists("curl") {
         return Err("curl is not available".into());
     }
+    let attempts = curl_transport_retry_attempts(url);
+    let mut last_error = String::new();
+    for attempt in 0..attempts {
+        match curl_get_once_with_timeout(url, headers, max_time_seconds) {
+            Ok(body) => return Ok(body),
+            Err(error) => {
+                last_error = error;
+                if attempt + 1 >= attempts || !is_retryable_curl_transport_error(&last_error) {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(50 * (attempt as u64 + 1)));
+            }
+        }
+    }
+    Err(last_error)
+}
+
+fn curl_get_once_with_timeout(
+    url: &str,
+    headers: &[(String, String)],
+    max_time_seconds: u64,
+) -> Result<String, String> {
     let mut cmd = adapters::command_with_gui_path("curl");
     let max_time = max_time_seconds.clamp(1, 60).to_string();
     cmd.args([
@@ -11161,6 +11183,29 @@ fn curl_get_with_timeout(
         }
     }
     Ok(body)
+}
+
+fn curl_transport_retry_attempts(url: &str) -> usize {
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("http://127.0.0.1:")
+        || lower.starts_with("http://localhost:")
+        || lower.starts_with("http://[::1]:")
+    {
+        3
+    } else {
+        1
+    }
+}
+
+fn is_retryable_curl_transport_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("curl:")
+        || lower.contains("connection refused")
+        || lower.contains("connection reset")
+        || lower.contains("recv failure")
+        || lower.contains("could not connect")
+        || lower.contains("couldn't connect")
+        || lower.contains("provider request failed without response details")
 }
 
 #[derive(Clone, Copy)]
@@ -22257,6 +22302,28 @@ mod tests {
         );
         assert!(detail.starts_with("timeout: completion probe failed:"));
         assert!(detail.contains("Operation timed out"));
+    }
+
+    #[test]
+    fn curl_transport_retries_are_scoped_to_loopback_urls() {
+        assert_eq!(
+            curl_transport_retry_attempts("http://127.0.0.1:18080/v1/models"),
+            3
+        );
+        assert_eq!(
+            curl_transport_retry_attempts("http://localhost:11434/v1/models"),
+            3
+        );
+        assert_eq!(
+            curl_transport_retry_attempts("https://api.openai.com/v1/models"),
+            1
+        );
+        assert!(is_retryable_curl_transport_error(
+            "curl: (56) Recv failure: Connection reset by peer"
+        ));
+        assert!(!is_retryable_curl_transport_error(
+            "HTTP 401: invalid api key"
+        ));
     }
 
     #[test]
