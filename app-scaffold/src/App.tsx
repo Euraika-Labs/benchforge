@@ -1383,6 +1383,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [localRuntimes, setLocalRuntimes] = useState<LocalRuntime[]>([]);
   const [localSelections, setLocalSelections] = useState<Record<string, string>>({});
   const [detectingLocal, setDetectingLocal] = useState(false);
+  const [addingLocalRuntimeId, setAddingLocalRuntimeId] = useState('');
   const [runtimeToolBusy, setRuntimeToolBusy] = useState('');
   const [runtimeToolResult, setRuntimeToolResult] = useState<LocalRuntimeToolResult | null>(null);
   const [validations, setValidations] = useState<Record<string, TargetValidation>>({});
@@ -2264,13 +2265,53 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
   }
 
+  function localRuntimeTargetName(runtime: LocalRuntime, model: string) {
+    return `${runtime.name} ${model.trim()}`;
+  }
+
+  function localRuntimeTargetId(runtime: LocalRuntime, model: string) {
+    return slugify(`${runtime.adapterId}-${model.trim()}-${runtime.baseUrl}`);
+  }
+
+  function localRuntimePlannedTarget(runtime: LocalRuntime, model: string) {
+    return plannedModelTarget(
+      localRuntimeTargetId(runtime, model),
+      localRuntimeTargetName(runtime, model),
+      runtime.adapterId,
+      runtime.baseUrl,
+    );
+  }
+
+  function localRuntimeBenchmarkIntent(runtime: LocalRuntime, model: string) {
+    if (!model.trim() || !localRuntimeCanAddTarget(runtime, model)) {
+      return null;
+    }
+    const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
+    const plannedTarget = localRuntimePlannedTarget(runtime, model);
+    const targetUniverse = targetListWithOverride(plannedTarget, targets);
+    return automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
+  }
+
+  function localRuntimeActionLabel(runtime: LocalRuntime, model: string) {
+    if (!localRuntimeCanAddTarget(runtime, model)) {
+      return 'Add target';
+    }
+    if (!autoBenchmarkAfterAdd) {
+      return 'Add target';
+    }
+    const intent = localRuntimeBenchmarkIntent(runtime, model);
+    return intent && intent.targetIds.length > 1 ? 'Add + compare' : 'Add + run';
+  }
+
   async function addDetectedRuntime(runtime: LocalRuntime, model: string) {
     if (!model.trim()) {
       setMessage('Select a local model first');
       return;
     }
-    const name = `${runtime.name} ${model.trim()}`;
-    const id = slugify(`${runtime.adapterId}-${model.trim()}-${runtime.baseUrl}`);
+    const name = localRuntimeTargetName(runtime, model);
+    const id = localRuntimeTargetId(runtime, model);
+    setAddingLocalRuntimeId(runtime.id);
+    setMessage(`Adding ${name} and validating target`);
     const targetRequest = {
       id,
       name,
@@ -2304,40 +2345,44 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         output_price_usd_per_million_tokens: 0,
       },
     };
-    const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
-    const plannedTarget = plannedModelTarget(id, name, runtime.adapterId, runtime.baseUrl);
-    const targetUniverse = targetListWithOverride(plannedTarget, targets);
-    const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
-    const handoff = await createTargetWithBenchmarkHandoff(
-      targetRequest,
-      autoBenchmarkAfterAdd
-        ? {
-            benchmarkPackId: packId,
-            benchmarkTargetIds: benchmarkIntent.targetIds,
-            repetitions: benchmarkIntent.repetitions,
-            warmupRuns: benchmarkIntent.warmupRuns,
-            concurrency: benchmarkIntent.concurrency,
-            maxCostUsd: benchmarkIntent.maxCostUsd,
-          }
-        : {},
-    );
-    setValidations(current => {
-      const next = { ...current };
-      if (handoff.validation) {
-        next[id] = handoff.validation;
-      } else {
-        delete next[id];
-      }
-      return next;
-    });
-    await finishModelTargetHandoff(
-      handoff.target,
-      handoff.validation ?? null,
-      name,
-      false,
-      handoff.runJob ?? null,
-      handoff.benchmarkError ?? null,
-    );
+    try {
+      const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
+      const plannedTarget = localRuntimePlannedTarget(runtime, model);
+      const targetUniverse = targetListWithOverride(plannedTarget, targets);
+      const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
+      const handoff = await createTargetWithBenchmarkHandoff(
+        targetRequest,
+        autoBenchmarkAfterAdd
+          ? {
+              benchmarkPackId: packId,
+              benchmarkTargetIds: benchmarkIntent.targetIds,
+              repetitions: benchmarkIntent.repetitions,
+              warmupRuns: benchmarkIntent.warmupRuns,
+              concurrency: benchmarkIntent.concurrency,
+              maxCostUsd: benchmarkIntent.maxCostUsd,
+            }
+          : {},
+      );
+      setValidations(current => {
+        const next = { ...current };
+        if (handoff.validation) {
+          next[id] = handoff.validation;
+        } else {
+          delete next[id];
+        }
+        return next;
+      });
+      await finishModelTargetHandoff(
+        handoff.target,
+        handoff.validation ?? null,
+        name,
+        false,
+        handoff.runJob ?? null,
+        handoff.benchmarkError ?? null,
+      );
+    } finally {
+      setAddingLocalRuntimeId('');
+    }
   }
 
   async function addModelTarget() {
@@ -2939,7 +2984,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
             {runtime.id === 'ollama' ? <button disabled={Boolean(runtimeToolBusy) || !selectedModel.trim()} onClick={() => runSelectedLocalRuntimeTool(runtime, 'pull', selectedModel.trim()).catch(error => setMessage(String(error)))}><Download size={14} />{runtimeToolBusy === `${runtime.id}:pull` ? 'Pulling' : 'Pull model'}</button> : null}
           </div> : null}
           {runtimeResult ? <div><div className="tag-row"><span className={`pill ${runtimeResult.status === 'ready' ? 'ok' : runtimeResult.status === 'error' ? 'error' : 'warn'}`}>{runtimeResult.status}</span><span className="mini-tag">{runtimeResult.action}</span></div><pre className="setup-log">{runtimeResult.log}</pre></div> : null}
-        </td><td>{runtime.models.length ? <select value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))}>{runtime.models.map(modelName => <option key={modelName} value={modelName}>{modelName}</option>)}</select> : <input value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))} placeholder={runtime.modelHint ?? 'model id'} />}</td><td><button disabled={!localRuntimeCanAddTarget(runtime, selectedModel)} onClick={() => addDetectedRuntime(runtime, selectedModel).catch(error => setMessage(String(error)))}><Plus size={16} />Add target</button></td></tr>;
+        </td><td>{runtime.models.length ? <select value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))}>{runtime.models.map(modelName => <option key={modelName} value={modelName}>{modelName}</option>)}</select> : <input value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))} placeholder={runtime.modelHint ?? 'model id'} />}</td><td><button disabled={Boolean(addingLocalRuntimeId) || !localRuntimeCanAddTarget(runtime, selectedModel)} title={localRuntimeCanAddTarget(runtime, selectedModel) ? 'Save, validate, and use the current automatic benchmark setting' : 'Start the local runtime and select a model before adding it'} onClick={() => addDetectedRuntime(runtime, selectedModel).catch(error => setMessage(String(error)))}><ClipboardCheck size={16} />{addingLocalRuntimeId === runtime.id ? 'Adding' : localRuntimeActionLabel(runtime, selectedModel)}</button></td></tr>;
       })}</tbody></table>
       {!localRuntimes.length && <p className="muted">Detect Ollama, LM Studio, llama.cpp, vLLM, MLX / mlx-lm, and oMLX OpenAI-compatible servers on their default local ports.</p>}
     </div>
