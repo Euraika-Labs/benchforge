@@ -1,4 +1,4 @@
-.PHONY: doctor dev dev-check test dependency-audit release-preflight release-signing-preflight benchmark-readiness benchmark-readiness-full smoke prompt-smoke llm-connectivity-smoke llm-core-smoke llm-practical-smoke llm-decision-smoke llm-structured-smoke llm-grounded-smoke llm-reliability-smoke code-edit-smoke code-edit-contract-smoke security-smoke worker-harness-contract-smoke cloud-contract-smoke cloud-provider-job-smoke cloud-catalog-smoke local-runtime-discovery-smoke live-cloud-smoke live-cloud-run live-cloud-run-basics provider-error-contract-smoke validation-contract-smoke create-target-handoff-smoke local-cloud-connectivity-smoke local-cloud-compare-smoke local-cloud-job-smoke local-cloud-basics-smoke local-cloud-core-smoke local-cloud-practical-smoke local-cloud-decision-smoke local-cloud-structured-smoke local-cloud-grounded-smoke local-cloud-reliability-smoke smoke-docker job-smoke report-smoke first-run-smoke worker-smoke hf-search-smoke hf-download-smoke hf-download-job-smoke hf-download-start-job-smoke hf-server-job-smoke hf-server-start-job-smoke hf-local-smoke hf-local-cloud-smoke hf-local-cloud-basics-smoke validate-schemas app-build rust-test worker-test worker-help verify-dmg verify-distribution-dmg install-smoke-dmg package-dmg package-release-dmg
+.PHONY: doctor dev dev-check test dependency-audit release-preflight release-signing-plan release-signing-preflight benchmark-readiness benchmark-readiness-full smoke prompt-smoke llm-connectivity-smoke llm-core-smoke llm-practical-smoke llm-decision-smoke llm-structured-smoke llm-grounded-smoke llm-reliability-smoke code-edit-smoke code-edit-contract-smoke security-smoke worker-harness-contract-smoke cloud-contract-smoke cloud-provider-job-smoke cloud-catalog-smoke local-runtime-discovery-smoke live-cloud-smoke live-cloud-run live-cloud-run-basics provider-error-contract-smoke validation-contract-smoke create-target-handoff-smoke local-cloud-connectivity-smoke local-cloud-compare-smoke local-cloud-job-smoke local-cloud-basics-smoke local-cloud-core-smoke local-cloud-practical-smoke local-cloud-decision-smoke local-cloud-structured-smoke local-cloud-grounded-smoke local-cloud-reliability-smoke smoke-docker job-smoke report-smoke first-run-smoke worker-smoke hf-search-smoke hf-download-smoke hf-download-job-smoke hf-download-start-job-smoke hf-server-job-smoke hf-server-start-job-smoke hf-local-smoke hf-local-cloud-smoke hf-local-cloud-basics-smoke validate-schemas app-build rust-test worker-test worker-help verify-dmg verify-distribution-dmg install-smoke-dmg package-dmg package-release-dmg
 
 PYTHON ?= $(if $(wildcard workers/.venv/bin/python),workers/.venv/bin/python,$(or $(BENCHFORGE_PYTHON),python3))
 
@@ -18,6 +18,9 @@ dependency-audit:
 
 release-preflight:
 	BENCHFORGE_PYTHON="$(PYTHON)" ./scripts/release-preflight.sh
+
+release-signing-plan:
+	BENCHFORGE_RELEASE_SIGNING_PLAN=1 ./scripts/release-signing-preflight-macos.sh
 
 release-signing-preflight:
 	./scripts/release-signing-preflight-macos.sh

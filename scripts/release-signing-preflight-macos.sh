@@ -4,19 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAURI_CONF="$ROOT/app-scaffold/src-tauri/tauri.conf.json"
 RELEASE_DISTRIBUTION="${BENCHFORGE_RELEASE_DISTRIBUTION:-${BENCHFORGE_REQUIRE_CODESIGN:-0}}"
-
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "macOS signing preflight requires macOS." >&2
-  exit 1
-fi
-
-if [[ "$RELEASE_DISTRIBUTION" != "1" ]]; then
-  echo "ok   signing preflight skipped for unsigned local build"
-  echo "     Set BENCHFORGE_RELEASE_DISTRIBUTION=1 to require Developer ID signing and notarization inputs."
-  exit 0
-fi
-
-errors=()
+PLAN_ONLY="${BENCHFORGE_RELEASE_SIGNING_PLAN:-0}"
 
 present() {
   local name="$1"
@@ -31,6 +19,66 @@ safe_state() {
     echo "<unset>"
   fi
 }
+
+print_release_signing_plan() {
+  cat <<'EOF'
+Release signing/notarization setup plan:
+
+1. Choose a Developer ID signing source.
+   Local keychain:
+     export APPLE_SIGNING_IDENTITY="Developer ID Application: Example (TEAMID)"
+   CI certificate:
+     export APPLE_CERTIFICATE=/path/to/developer-id-application.p12
+     export APPLE_CERTIFICATE_PASSWORD=<secret>
+
+2. Choose one notarization method.
+   Apple ID credentials:
+     export APPLE_ID=developer@example.com
+     export APPLE_TEAM_ID=TEAMID1234
+     export APPLE_PASSWORD=<app-specific-password>
+   App Store Connect API key:
+     export APPLE_API_KEY=KEYID12345
+     export APPLE_API_ISSUER=<issuer-uuid>
+     export APPLE_API_KEY_PATH=/path/to/AuthKey_KEYID12345.p8
+
+3. Verify, build, and verify the public DMG.
+     BENCHFORGE_RELEASE_DISTRIBUTION=1 make release-signing-preflight
+     make package-release-dmg
+     make verify-distribution-dmg
+
+Current secret state:
+EOF
+  echo "  APPLE_SIGNING_IDENTITY=${APPLE_SIGNING_IDENTITY:-<unset>}"
+  echo "  APPLE_CERTIFICATE=$(safe_state APPLE_CERTIFICATE)"
+  echo "  APPLE_CERTIFICATE_PASSWORD=$(safe_state APPLE_CERTIFICATE_PASSWORD)"
+  echo "  APPLE_ID=$(safe_state APPLE_ID)"
+  echo "  APPLE_TEAM_ID=$(safe_state APPLE_TEAM_ID)"
+  echo "  APPLE_PASSWORD=$(safe_state APPLE_PASSWORD)"
+  echo "  APPLE_API_KEY=$(safe_state APPLE_API_KEY)"
+  echo "  APPLE_API_ISSUER=$(safe_state APPLE_API_ISSUER)"
+  echo "  APPLE_API_KEY_PATH=${APPLE_API_KEY_PATH:-<unset>}"
+  echo "  APPLE_PROVIDER_SHORT_NAME=${APPLE_PROVIDER_SHORT_NAME:-<unset>}"
+}
+
+if [[ "$PLAN_ONLY" == "1" ]]; then
+  print_release_signing_plan
+  exit 0
+fi
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "macOS signing preflight requires macOS." >&2
+  echo "Run 'make release-signing-plan' for the credential checklist." >&2
+  exit 1
+fi
+
+if [[ "$RELEASE_DISTRIBUTION" != "1" ]]; then
+  echo "ok   signing preflight skipped for unsigned local build"
+  echo "     Set BENCHFORGE_RELEASE_DISTRIBUTION=1 to require Developer ID signing and notarization inputs."
+  echo "     Run 'make release-signing-plan' for the public-release credential checklist."
+  exit 0
+fi
+
+errors=()
 
 require_command() {
   local name="$1"
@@ -152,6 +200,8 @@ if (( ${#errors[@]} > 0 )); then
   for error in "${errors[@]}"; do
     echo "fail $error" >&2
   done
+  echo "" >&2
+  print_release_signing_plan >&2
   exit 1
 fi
 

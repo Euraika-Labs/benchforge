@@ -390,6 +390,7 @@ Run these from the repository root.
 | `make package-dmg` | Build a local macOS DMG. |
 | `make verify-dmg` | Verify the latest built DMG checksum, mount it, inspect `BenchForge.app`, and report signature status. |
 | `make install-smoke-dmg` | Copy the app out of the DMG and run first-run, worker, and security-pack smokes. |
+| `make release-signing-plan` | Print the public-release signing/notarization checklist without requiring credentials. |
 | `make package-release-dmg` | Build a public macOS DMG with signing and notarization checks enabled. |
 | `make verify-distribution-dmg` | Require Developer ID signing, Gatekeeper assessment, and notarization ticket validation. |
 
@@ -409,6 +410,7 @@ make install-smoke-dmg
 For a public release DMG, enable distribution checks and provide Apple signing plus notarization credentials:
 
 ```bash
+make release-signing-plan
 BENCHFORGE_RELEASE_DISTRIBUTION=1 \
 APPLE_SIGNING_IDENTITY="Developer ID Application: Example" \
 APPLE_ID="developer@example.com" \
