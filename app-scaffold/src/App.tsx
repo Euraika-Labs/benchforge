@@ -1696,6 +1696,57 @@ function AutomaticBenchmarkPreview({
   </div>;
 }
 
+function AutomaticBenchmarkInlinePreview({
+  enabled,
+  plannedTarget,
+  intent,
+  targets,
+  packLabel,
+  needsPricing,
+  unpricedCloudTargetIds,
+}: {
+  enabled: boolean;
+  plannedTarget: Target | null;
+  intent: RunBuilderIntent | null;
+  targets: Target[];
+  packLabel: string;
+  needsPricing: boolean;
+  unpricedCloudTargetIds: string[];
+}) {
+  const targetById = new Map(targets.map(target => [target.id, target]));
+  const targetNames = intent?.targetIds.map(id => automaticPreviewTargetLabel(id, plannedTarget, targetById)) ?? [];
+  const unpricedCloudNames = unpricedCloudTargetIds.map(id => automaticPreviewTargetLabel(id, plannedTarget, targetById));
+  const unpricedExistingCloudNames = targets
+    .filter(target => target.id !== plannedTarget?.id && isCloudModelTarget(target) && !targetHasInputOutputPricing(target))
+    .map(target => target.name || target.id);
+  const tone = !enabled ? 'unknown' : needsPricing || !plannedTarget || !intent ? 'warn' : 'ok';
+  const label = !enabled
+    ? 'save only'
+    : !plannedTarget
+      ? 'needs model'
+      : needsPricing
+        ? 'pricing'
+        : intent && intent.targetIds.length > 1
+          ? 'compare'
+          : 'run';
+  const runShape = intent ? `${intent.repetitions ?? 1} rep / ${intent.warmupRuns ?? 0} warmup` : '';
+  const detail = !enabled
+    ? 'Automatic benchmark is off.'
+    : !plannedTarget
+      ? 'Start the runtime and choose a model.'
+      : needsPricing
+        ? `Add pricing for ${previewList(unpricedCloudNames)}.`
+        : intent && intent.targetIds.length > 1
+          ? `${packLabel}; ${targetNames.length} targets; ${runShape}.`
+          : unpricedExistingCloudNames.length
+            ? `${packLabel}; run local only. Price ${previewList(unpricedExistingCloudNames, 2)} to compare.`
+            : `${packLabel}; run this target; ${runShape}.`;
+  return <div className={`handoff-inline-preview ${tone}`} title={targetNames.length ? previewList(targetNames, 6) : detail}>
+    <span className={`pill ${tone}`}>{label}</span>
+    <span>{detail}</span>
+  </div>;
+}
+
 function automaticPreviewTargetLabel(id: string, plannedTarget: Target | null, targetById: Map<string, Target>) {
   if (plannedTarget && id === plannedTarget.id) {
     return `new: ${plannedTarget.name}`;
@@ -3545,6 +3596,22 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       <table><thead><tr><th>Runtime</th><th>Endpoint</th><th>Status</th><th>Model</th><th></th></tr></thead><tbody>{localRuntimes.map(runtime => {
         const selectedModel = localSelections[runtime.id] ?? runtime.recommendedModel ?? runtime.models[0] ?? '';
         const runtimeResult = runtimeToolResult?.runtimeId === runtime.id ? runtimeToolResult : null;
+        const runtimeCanAdd = localRuntimeCanAddTarget(runtime, selectedModel);
+        const runtimePlannedTarget = runtimeCanAdd ? localRuntimePlannedTarget(runtime, selectedModel) : null;
+        const runtimePreviewPackId = autoBenchmarkPackId || connectivityBenchmarkPackId;
+        const runtimePreviewUniverse = runtimePlannedTarget ? targetListWithOverride(runtimePlannedTarget, targets) : targets;
+        const runtimePreviewIntent = runtimePlannedTarget && autoBenchmarkAfterAdd
+          ? automaticModelBenchmarkIntentForTarget(runtimePlannedTarget, runtimePreviewUniverse, runtimePreviewPackId, autoBenchmarkTargetIds)
+          : null;
+        const runtimePreviewNeedsPricing = runtimePreviewIntent
+          ? cappedIntentHasUnpricedCloudTarget(runtimePreviewIntent, runtimePreviewUniverse)
+          : false;
+        const runtimePreviewUnpricedCloudIds = runtimePreviewIntent
+          ? runtimePreviewIntent.targetIds.filter(targetId => {
+              const target = runtimePreviewUniverse.find(candidate => candidate.id === targetId);
+              return Boolean(target && isCloudModelTarget(target) && !targetHasInputOutputPricing(target));
+            })
+          : [];
         return <tr key={runtime.id}><td>{runtime.name}</td><td>{runtime.baseUrl}</td><td><span className={`pill ${runtime.status === 'ok' ? 'ok' : runtime.status === 'error' ? 'error' : 'warn'}`}>{runtime.status}</span> {runtime.detail}
           {runtime.modelSource ? <div className="tag-row"><span className="mini-tag" title={runtime.probeUrl ?? undefined}>{runtime.modelSource}</span></div> : null}
           {runtime.setupHint ? <div className="muted">{runtime.setupHint}</div> : null}
@@ -3558,7 +3625,15 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
             {runtime.id === 'ollama' ? <button disabled={Boolean(runtimeToolBusy) || !selectedModel.trim()} onClick={() => runSelectedLocalRuntimeTool(runtime, 'pull', selectedModel.trim()).catch(error => setMessage(String(error)))}><Download size={14} />{runtimeToolBusy === `${runtime.id}:pull` ? 'Pulling' : 'Pull model'}</button> : null}
           </div> : null}
           {runtimeResult ? <div><div className="tag-row"><span className={`pill ${runtimeResult.status === 'ready' ? 'ok' : runtimeResult.status === 'error' ? 'error' : 'warn'}`}>{runtimeResult.status}</span><span className="mini-tag">{runtimeResult.action}</span></div><pre className="setup-log">{runtimeResult.log}</pre></div> : null}
-        </td><td>{runtime.models.length ? <select value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))}>{runtime.models.map(modelName => <option key={modelName} value={modelName}>{modelName}</option>)}</select> : <input value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))} placeholder={runtime.modelHint ?? 'model id'} />}</td><td><button disabled={Boolean(addingLocalRuntimeId) || !localRuntimeCanAddTarget(runtime, selectedModel)} title={localRuntimeCanAddTarget(runtime, selectedModel) ? 'Save, validate, and use the current automatic benchmark setting' : 'Start the local runtime and select a model before adding it'} onClick={() => addDetectedRuntime(runtime, selectedModel).catch(error => setMessage(String(error)))}><ClipboardCheck size={16} />{addingLocalRuntimeId === runtime.id ? 'Adding' : localRuntimeActionLabel(runtime, selectedModel)}</button></td></tr>;
+        </td><td>{runtime.models.length ? <select value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))}>{runtime.models.map(modelName => <option key={modelName} value={modelName}>{modelName}</option>)}</select> : <input value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))} placeholder={runtime.modelHint ?? 'model id'} />}</td><td><button disabled={Boolean(addingLocalRuntimeId) || !runtimeCanAdd} title={runtimeCanAdd ? 'Save, validate, and use the current automatic benchmark setting' : 'Start the local runtime and select a model before adding it'} onClick={() => addDetectedRuntime(runtime, selectedModel).catch(error => setMessage(String(error)))}><ClipboardCheck size={16} />{addingLocalRuntimeId === runtime.id ? 'Adding' : localRuntimeActionLabel(runtime, selectedModel)}</button><AutomaticBenchmarkInlinePreview
+          enabled={autoBenchmarkAfterAdd}
+          plannedTarget={runtimePlannedTarget}
+          intent={runtimePreviewIntent}
+          targets={runtimePreviewUniverse}
+          packLabel={benchmarkPackLabel(runtimePreviewPackId, modelBenchmarkPacks)}
+          needsPricing={runtimePreviewNeedsPricing}
+          unpricedCloudTargetIds={runtimePreviewUnpricedCloudIds}
+        /></td></tr>;
       })}</tbody></table>
       {!localRuntimes.length && <p className="muted">Detect Ollama, LM Studio, llama.cpp, vLLM, MLX / mlx-lm, and oMLX OpenAI-compatible servers on their default local ports.</p>}
     </div>
