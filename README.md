@@ -258,7 +258,7 @@ BenchForge works best when local runtimes expose an OpenAI-compatible API.
 
 | Runtime | Typical setup | Target notes |
 | --- | --- | --- |
-| Ollama | Start Ollama and pull a model, for example `ollama pull llama3.1:8b`. | Use `http://localhost:11434/v1` and the Ollama model tag. |
+| Ollama | Start Ollama; if no models are listed, use **Pull starter** in Targets or run `ollama pull qwen2.5-coder:7b`. | Use `http://localhost:11434/v1` and the Ollama model tag. |
 | LM Studio | Start the local server from LM Studio. | Use its local `/v1` base URL, often `http://localhost:1234/v1`. |
 | llama.cpp | Run `llama-server -m /path/model.gguf --port 8080`. | Use `http://127.0.0.1:8080/v1`. |
 | vLLM / MLX / custom server | Start the server with an OpenAI-compatible endpoint. | Use the matching adapter or generic OpenAI-compatible adapter. |
