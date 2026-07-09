@@ -66,6 +66,7 @@ for rel, description in [
     ("scripts/package-dmg-macos.sh", "DMG packaging script"),
     ("scripts/verify-dmg-macos.sh", "DMG verification script"),
     ("scripts/verify-dmg-install-smoke-macos.sh", "installed DMG smoke script"),
+    ("scripts/product-readiness.sh", "product readiness script"),
     ("scripts/release-signing-preflight-macos.sh", "macOS signing preflight script"),
     ("scripts/verify-macos-distribution.sh", "macOS distribution verification script"),
 ]:
