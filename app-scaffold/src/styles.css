@@ -79,6 +79,10 @@ pre { background: #1c1917; color: #f5f5f4; padding: 14px; border-radius: 8px; ov
 .active-work-table td:last-child { text-align: right; font-weight: 400; }
 .active-work-table td:nth-child(2), .active-work-table td:nth-child(5) { max-width: 320px; overflow-wrap: anywhere; }
 .dashboard-ranking-panel { margin-top: 18px; }
+.evidence-summary { display: grid; gap: 8px; margin: 10px 0 14px; }
+.evidence-summary-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #57534e; font-size: 14px; line-height: 1.35; }
+.evidence-summary p { margin: 0; }
+.evidence-risk-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .dashboard-ranking-table th, .dashboard-ranking-table td { padding: 8px 10px; }
 .dashboard-ranking-table td:last-child { text-align: left; font-weight: 400; }
 .dashboard-ranking-table td:nth-child(2) { max-width: 260px; overflow-wrap: anywhere; }

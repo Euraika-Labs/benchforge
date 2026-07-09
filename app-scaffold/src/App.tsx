@@ -880,12 +880,28 @@ function DashboardModelSelectionPanel({
     </div></div>
     {leaders.length ? <>
       <p className="muted">Uses the same weighted target ranking and evidence grading as Results across stored benchmark history.</p>
-      {evidence ? <p className="muted"><strong>Evidence:</strong> {evidence.label}. {dashboardEvidenceNote(evidence)}</p> : null}
+      {evidence ? <DashboardEvidenceSummary evidence={evidence} /> : null}
       <table className="compact-table dashboard-ranking-table"><thead><tr><th>Rank</th><th>Target</th><th>Evidence</th><th>Score</th><th>Latency</th><th>Cost</th><th>Coverage</th></tr></thead><tbody>
         {leaders.map((row, index) => <tr key={row.targetId}><td>{index + 1}</td><td><strong>{row.targetId}</strong><div className="muted">{row.providers}</div></td><td>{formatPercent(row.weightedPassRate ?? row.passRate)} weighted pass<div className="muted">{formatPercent(row.passRate)} pass, CI {formatPercentRange(row.passRateCiLow, row.passRateCiHigh)}</div></td><td>{formatNumberWithSpread(row.weightedAvgScore ?? row.avgScore, row.scoreStdDev)}</td><td>{formatMs(row.p95TimeMs)} p95</td><td>{formatCost(row.avgCostUsd)}</td><td>{row.runs} run(s), {row.packs} pack(s), {row.tasks} task(s)</td></tr>)}
       </tbody></table>
       <p className="muted">Recent spend: {formatCost(recentCost.costUsd)} across {recentCost.pricedRows}/{recentCost.rows} priced result row(s) from the last 7 days.</p>
     </> : <p className="muted">No stored local/cloud LLM benchmark results yet. Run the same LLM pack against one local and one cloud target to start building comparison evidence.</p>}
+  </div>;
+}
+
+function DashboardEvidenceSummary({ evidence }: { evidence: ComparisonEvidenceAssessment }) {
+  const visibleRisks = evidence.risks.slice(0, 6);
+  const hiddenRiskCount = Math.max(0, evidence.risks.length - visibleRisks.length);
+  return <div className="evidence-summary">
+    <div className="evidence-summary-main">
+      <span className={`pill ${evidence.tone}`}>{evidence.label}</span>
+      <span>{dashboardEvidenceNote(evidence)}</span>
+    </div>
+    {visibleRisks.length ? <div className="evidence-risk-row">
+      {visibleRisks.map(risk => <span key={risk} className="mini-tag warn" title={dashboardEvidenceRiskHint(risk)}>{dashboardEvidenceRiskLabel(risk)}</span>)}
+      {hiddenRiskCount ? <span className="mini-tag" title={evidence.risks.slice(visibleRisks.length).map(dashboardEvidenceRiskLabel).join(', ')}>+{hiddenRiskCount} more</span> : null}
+    </div> : null}
+    <p className="muted"><strong>Next run:</strong> {evidence.minimumNextRun}</p>
   </div>;
 }
 
@@ -904,7 +920,81 @@ function dashboardEvidenceNote(evidence: ComparisonEvidenceAssessment) {
   if (evidence.grade === 'comparison_ready') {
     return 'The leading target is selected only after matching coverage, run groups, cost coverage, repetition depth, and interval separation.';
   }
-  return `Ranking is provisional; ${evidence.minimumNextRun}`;
+  return 'Ranking is provisional until the blockers below are resolved.';
+}
+
+function dashboardEvidenceRiskLabel(risk: string) {
+  switch (risk) {
+    case 'no_comparison_results':
+      return 'No comparison results';
+    case 'single_target':
+      return 'Single target';
+    case 'connectivity_pack_only':
+      return 'Connectivity only';
+    case 'pack_evidence_profile':
+      return 'Weak pack evidence';
+    case 'low_repetitions':
+      return 'Low repetitions';
+    case 'coverage_gap':
+      return 'Coverage gap';
+    case 'separate_run_groups':
+      return 'Separate run groups';
+    case 'pass_rate_ci_overlap':
+      return 'Close confidence interval';
+    case 'cost_coverage_gap':
+      return 'Missing cost';
+    case 'pricing_assumption':
+      return 'Pricing assumption';
+    case 'provider_model_missing':
+      return 'Missing served model';
+    case 'provider_model_inconsistent':
+      return 'Mixed served model';
+    case 'provider_model_configured_fallback':
+      return 'Fallback model id';
+    case 'generation_settings_mixed':
+      return 'Mixed generation settings';
+    case 'pack_calibration':
+      return 'Pack calibration';
+    default:
+      return risk.replace(/_/g, ' ');
+  }
+}
+
+function dashboardEvidenceRiskHint(risk: string) {
+  switch (risk) {
+    case 'no_comparison_results':
+      return 'Run at least one local and one cloud target on the same LLM pack.';
+    case 'single_target':
+      return 'One target can validate setup, but it cannot compare local versus cloud models.';
+    case 'connectivity_pack_only':
+      return 'Connectivity packs prove setup, not model quality.';
+    case 'pack_evidence_profile':
+      return 'The visible pack is not strong enough for model selection.';
+    case 'low_repetitions':
+      return `Run at least ${recommendedTaskRepetitions} measured repetitions per task and target.`;
+    case 'coverage_gap':
+      return 'Compared targets need the same pack/task slots.';
+    case 'separate_run_groups':
+      return 'Run the compared targets together so they share one run-group context.';
+    case 'pass_rate_ci_overlap':
+      return 'The leader is too close to another target to call a decisive winner.';
+    case 'cost_coverage_gap':
+      return 'Add pricing or token usage so cost can be compared.';
+    case 'pricing_assumption':
+      return 'Cache or token pricing used a fallback assumption.';
+    case 'provider_model_missing':
+      return 'Provider or runtime did not confirm the served model id.';
+    case 'provider_model_inconsistent':
+      return 'One target appears to have served more than one model id.';
+    case 'provider_model_configured_fallback':
+      return 'BenchForge used the configured model id because the provider did not report one.';
+    case 'generation_settings_mixed':
+      return 'Targets were compared with different temperature, top-p, or seed policy.';
+    case 'pack_calibration':
+      return 'The pack needs documented calibration before it can select a winner.';
+    default:
+      return 'Evidence blocker';
+  }
 }
 
 interface ActiveWorkRow {
