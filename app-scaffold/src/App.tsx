@@ -592,7 +592,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const recommendedTargetIds = recommendedTargets.runTargetIds;
   const allComparableTargetIds = recommendedTargets.allRunTargetIds;
   const primaryComparisonTargetIds = dashboardPrimaryComparisonTargetIds(recommendedTargetIds, allComparableTargetIds);
-  const primaryComparisonRunsAllComparable = primaryComparisonTargetIds.length > recommendedTargetIds.length
+  const primaryComparisonIncludesAllComparable = primaryComparisonTargetIds.length >= 2
     && primaryComparisonTargetIds.length === allComparableTargetIds.length;
   const setupLocalTargetIds = recommendedTargets.setupLocalTargetIds;
   const setupCloudTargetIds = recommendedTargets.setupCloudTargetIds;
@@ -613,12 +613,12 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       : null,
     [dashboardEvidence, dashboardEvidencePricingRepairTargetIds, targetRankings, targets, packs],
   );
-  const primaryBenchmarkActionLabel = comparisonNeedsPricing ? 'Add cloud pricing' : comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
+  const primaryBenchmarkActionLabel = comparisonNeedsPricing ? 'Add cloud pricing' : comparisonReady ? dashboardPrimaryComparisonActionLabel(primaryComparisonTargetIds, allComparableTargetIds) : dashboardBenchmarkStepLabel(nextBenchmarkStep);
   const primaryBenchmarkActionDisabled = busy || (comparisonReady && !comparisonNeedsPricing && activeRunInProgress);
   const primaryBenchmarkActionTitle = activeRunInProgress && comparisonReady
     ? 'A benchmark job is already running'
-    : comparisonReady && !comparisonNeedsPricing && primaryComparisonRunsAllComparable
-      ? `Runs all ${primaryComparisonTargetIds.length} comparable local/priced cloud targets with the same pack and capped cost.${skippedUnpricedCloudTargetIds.length ? ` Skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.` : ''}`
+    : comparisonReady && !comparisonNeedsPricing && primaryComparisonIncludesAllComparable
+      ? `Runs ${primaryComparisonTargetIds.length === 2 ? 'both' : `all ${primaryComparisonTargetIds.length}`} comparable local/priced cloud targets with the same pack and capped cost.${skippedUnpricedCloudTargetIds.length ? ` Skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.` : ''}`
       : comparisonReady && !comparisonNeedsPricing && allComparableTargetIds.length > primaryComparisonTargetIds.length
       ? `Runs the recommended pair: ${previewList(recommendedTargetIds)}. Use Compare all for all ${allComparableTargetIds.length} comparable priced targets.${skippedUnpricedCloudTargetIds.length ? ` Skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.` : ''}`
       : undefined;
@@ -628,6 +628,10 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     ? 'A benchmark job is already running'
     : compareAllAvailable
       ? `Validate and run all ${allComparableTargetIds.length} comparable local/priced cloud targets${skippedUnpricedCloudTargetIds.length ? `; skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}` : ''}`
+      : comparisonNeedsPricing && pricingRepairTargetIds.length
+        ? `Add input/output pricing before comparing every local/cloud target: ${previewList(pricingRepairTargetIds)}`
+      : comparisonReady && !comparisonNeedsPricing && primaryComparisonIncludesAllComparable
+        ? `${primaryBenchmarkActionLabel} already includes ${primaryComparisonTargetIds.length === 2 ? 'both comparable targets' : `all ${primaryComparisonTargetIds.length} comparable targets`}`
       : 'Add more comparable local or priced cloud targets before comparing all models';
   const reliabilityComparisonDisabled = busy || activeRunInProgress || !comparisonReady || comparisonNeedsPricing || !hasReliabilityPack;
   const reliabilityComparisonTitle = activeRunInProgress
@@ -1560,6 +1564,16 @@ function dashboardPrimaryComparisonTargetIds(recommendedTargetIds: string[], all
     return allComparableTargetIds;
   }
   return recommendedTargetIds;
+}
+
+function dashboardPrimaryComparisonActionLabel(primaryTargetIds: string[], allComparableTargetIds: string[]) {
+  if (primaryTargetIds.length >= 2 && primaryTargetIds.length === allComparableTargetIds.length) {
+    return `Compare ${primaryTargetIds.length} models`;
+  }
+  if (primaryTargetIds.length >= 2) {
+    return 'Compare recommended pair';
+  }
+  return 'Run model comparison';
 }
 
 function compareDashboardComparisonTargetPriority(left: Target, right: Target) {
