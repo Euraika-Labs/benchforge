@@ -3689,23 +3689,34 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         <input value={cloudModelQuery} onChange={event => setCloudModelQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') searchModels().catch(error => setMessage(String(error))); }} placeholder={`Search ${selectedAdapter?.name ?? 'cloud'} models`} />
         <button disabled={!selectedAdapter || cloudModelBusy} onClick={() => searchModels().catch(error => setMessage(String(error)))}><Search size={16} />{cloudModelBusy ? 'Searching' : 'Search'}</button>
       </div>
-      {cloudModels.length ? <div className="model-browser">{cloudModels.map(item => <div className="model-row" key={`${item.source}-${item.model}`}>
-        <div className="model-main">
-          <strong>{item.name}</strong>
-          <span className="muted">{item.model}</span>
-          <div className="tag-row">
-            <span className="mini-tag">{item.provider}</span>
-            <span className="mini-tag">{formatPricePair(item.inputPriceUsdPerMillionTokens, item.outputPriceUsdPerMillionTokens, item.cacheReadPriceUsdPerMillionTokens, item.cacheWritePriceUsdPerMillionTokens)}</span>
-            {item.contextLength ? <span className="mini-tag">{formatInteger(item.contextLength)} ctx</span> : null}
-            <span className="mini-tag">{item.source}</span>
+      {cloudModels.length ? <div className="model-browser">{cloudModels.map(item => {
+        const catalogIntent = cloudCatalogBenchmarkIntent(item);
+        const catalogPlannedTarget = cloudCatalogPlannedTarget(item);
+        const catalogUniverse = catalogPlannedTarget ? targetListWithOverride(catalogPlannedTarget, targets) : targets;
+        const catalogNeedsPricing = Boolean(catalogIntent && cappedIntentHasUnpricedCloudTarget(catalogIntent, catalogUniverse));
+        const catalogActionTitle = editingTargetId
+          ? 'Finish or cancel the current edit before adding a catalog model'
+          : catalogNeedsPricing
+            ? 'Save and validate this cloud target, then add pricing before the capped comparison can run'
+            : 'Save, validate, and use the current automatic benchmark setting';
+        return <div className="model-row" key={`${item.source}-${item.model}`}>
+          <div className="model-main">
+            <strong>{item.name}</strong>
+            <span className="muted">{item.model}</span>
+            <div className="tag-row">
+              <span className="mini-tag">{item.provider}</span>
+              <span className="mini-tag">{formatPricePair(item.inputPriceUsdPerMillionTokens, item.outputPriceUsdPerMillionTokens, item.cacheReadPriceUsdPerMillionTokens, item.cacheWritePriceUsdPerMillionTokens)}</span>
+              {item.contextLength ? <span className="mini-tag">{formatInteger(item.contextLength)} ctx</span> : null}
+              <span className="mini-tag">{item.source}</span>
+            </div>
+            {item.detail ? <span className="muted">{item.detail}</span> : null}
           </div>
-          {item.detail ? <span className="muted">{item.detail}</span> : null}
-        </div>
-        <div className="model-actions">
-          <button disabled={Boolean(catalogAddBusyModel) || Boolean(editingTargetId)} title={editingTargetId ? 'Finish or cancel the current edit before adding a catalog model' : 'Save, validate, and use the current automatic benchmark setting'} onClick={() => addCloudModelFromCatalog(item).catch(error => setMessage(String(error)))}><ClipboardCheck size={16} />{catalogAddBusyModel === `${item.source}:${item.model}` ? 'Adding' : cloudCatalogActionLabel(item)}</button>
-          <button disabled={Boolean(catalogAddBusyModel)} onClick={() => useCloudModel(item)}><Plus size={16} />Use</button>
-        </div>
-      </div>)}</div> : null}
+          <div className="model-actions">
+            <button disabled={Boolean(catalogAddBusyModel) || Boolean(editingTargetId)} title={catalogActionTitle} onClick={() => addCloudModelFromCatalog(item).catch(error => setMessage(String(error)))}>{catalogNeedsPricing ? <Pencil size={16} /> : <ClipboardCheck size={16} />}{catalogAddBusyModel === `${item.source}:${item.model}` ? 'Adding' : cloudCatalogActionLabel(item)}</button>
+            <button disabled={Boolean(catalogAddBusyModel)} onClick={() => useCloudModel(item)}><Plus size={16} />Use</button>
+          </div>
+        </div>;
+      })}</div> : null}
       <p className="muted">Cloud keys are saved to macOS Keychain. Generation settings and optional pricing are stored with the target for reproducible comparisons.</p>
       {selectedModelPreset?.note ? <p className="muted">{selectedModelPreset.note}</p> : null}
       {typeof selectedAdapter?.metadata?.pricing_note === 'string' ? <p className="muted">{selectedAdapter.metadata.pricing_note}</p> : null}
