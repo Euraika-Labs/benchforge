@@ -678,6 +678,53 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     openTargetRepair({ targetIds, code: 'pricing_assumption' });
     setMessage(`Add pricing before running the recommended evidence follow-up: ${previewList(targetIds)}`);
   }
+  async function retryActiveWork(row: ActiveWorkRow) {
+    setBusy(true);
+    try {
+      setMessage(`Retrying ${row.kind.toLowerCase()} ${row.shortId}`);
+      switch (row.workType) {
+        case 'run':
+          await retryRunJob(row.id);
+          break;
+        case 'download':
+          await retryHuggingFaceDownloadJob(row.id);
+          break;
+        case 'server':
+          await retryHuggingFaceServerJob(row.id);
+          break;
+      }
+      await refresh();
+      setPage(row.page);
+      setMessage(`Retried ${row.kind.toLowerCase()} ${row.shortId}; opened ${row.page === 'runs' ? 'Runs' : 'local jobs'} to track progress`);
+    } catch (error) {
+      setMessage(row.workType === 'run' ? benchmarkRunFailureMessage(error) : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function cancelActiveWork(row: ActiveWorkRow) {
+    setBusy(true);
+    try {
+      setMessage(`Stopping ${row.kind.toLowerCase()} ${row.shortId}`);
+      switch (row.workType) {
+        case 'run':
+          await cancelRunJob(row.id);
+          break;
+        case 'download':
+          await cancelHuggingFaceDownloadJob(row.id);
+          break;
+        case 'server':
+          await cancelHuggingFaceServerJob(row.id);
+          break;
+      }
+      await refresh();
+      setMessage(`Stop requested for ${row.kind.toLowerCase()} ${row.shortId}`);
+    } catch (error) {
+      setMessage(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
   function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
     if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && recommendedTargetIds.length >= 2) {
       void runDashboardComparison(benchmarkPackId);
@@ -746,7 +793,15 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       onRunNextEvidence={runDashboardEvidenceFollowUp}
       onRepairPricing={openDashboardEvidencePricingRepair}
     />
-    <ActiveWorkPanel runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} />
+    <ActiveWorkPanel
+      runJobs={runJobs}
+      downloadJobs={downloadJobs}
+      serverJobs={serverJobs}
+      busy={busy}
+      setPage={setPage}
+      onRetry={retryActiveWork}
+      onCancel={cancelActiveWork}
+    />
     <div className="panel readiness-panel">
       <div className="panel-head"><h2>Benchmark Readiness</h2><button onClick={() => setPage('doctor')}><ShieldCheck size={14} />Doctor</button></div>
       <div className="readiness-steps">
@@ -847,10 +902,15 @@ function dashboardEvidenceNote(evidence: ComparisonEvidenceAssessment) {
 
 interface ActiveWorkRow {
   key: string;
+  id: string;
+  shortId: string;
+  workType: 'run' | 'download' | 'server';
   kind: string;
   label: string;
   status: string;
   active: boolean;
+  retryable: boolean;
+  cancellable: boolean;
   progress: string;
   percent: number | null;
   message: string;
@@ -858,10 +918,26 @@ interface ActiveWorkRow {
   page: Page;
 }
 
-function ActiveWorkPanel({ runJobs, downloadJobs, serverJobs, setPage }: { runJobs: RunJob[]; downloadJobs: HuggingFaceDownloadJob[]; serverJobs: HuggingFaceServerJob[]; setPage: (page: Page) => void }) {
+function ActiveWorkPanel({
+  runJobs,
+  downloadJobs,
+  serverJobs,
+  busy,
+  setPage,
+  onRetry,
+  onCancel,
+}: {
+  runJobs: RunJob[];
+  downloadJobs: HuggingFaceDownloadJob[];
+  serverJobs: HuggingFaceServerJob[];
+  busy: boolean;
+  setPage: (page: Page) => void;
+  onRetry: (row: ActiveWorkRow) => void;
+  onCancel: (row: ActiveWorkRow) => void;
+}) {
   const rows = buildActiveWorkRows(runJobs, downloadJobs, serverJobs);
   const activeCount = rows.filter(row => row.active).length;
-  const attentionCount = rows.filter(row => row.status === 'failed' || row.status === 'cancelled').length;
+  const attentionCount = rows.filter(row => row.retryable).length;
   const terminalCount = rows.filter(row => !row.active).length;
   const visibleRows = rows.slice(0, 8);
   return <div className="panel active-work-panel">
@@ -873,7 +949,7 @@ function ActiveWorkPanel({ runJobs, downloadJobs, serverJobs, setPage }: { runJo
       <span>{rows.length} tracked</span>
     </div>
     {visibleRows.length ? <table className="compact-table active-work-table"><thead><tr><th>Type</th><th>Item</th><th>Status</th><th>Progress</th><th>Message</th><th>Started</th><th></th></tr></thead><tbody>
-      {visibleRows.map(row => <tr key={row.key}><td>{row.kind}</td><td>{row.label}</td><td><span className={`pill ${jobStatusClass(row.status)}`}>{row.status}</span></td><td><WorkProgress percent={row.percent} label={row.progress} /></td><td><span title={row.message}>{row.message || '-'}</span></td><td>{formatDateTime(row.startedAt)}</td><td><button onClick={() => setPage(row.page)}>{row.page === 'runs' ? 'Open runs' : 'Open local jobs'}</button></td></tr>)}
+      {visibleRows.map(row => <tr key={row.key}><td>{row.kind}</td><td>{row.label}</td><td><span className={`pill ${jobStatusClass(row.status)}`}>{row.status}</span></td><td><WorkProgress percent={row.percent} label={row.progress} /></td><td><span title={row.message}>{row.message || '-'}</span></td><td>{formatDateTime(row.startedAt)}</td><td><div className="row-actions">{row.cancellable ? <button disabled={busy || row.status === 'cancelling'} title={`Stop ${row.kind.toLowerCase()} ${row.shortId}`} onClick={() => onCancel(row)}><Square size={14} />Stop</button> : null}{row.retryable ? <button disabled={busy} title={`Retry ${row.kind.toLowerCase()} ${row.shortId}`} onClick={() => onRetry(row)}><RotateCcw size={14} />Retry</button> : null}<button onClick={() => setPage(row.page)}>{row.page === 'runs' ? 'Open runs' : 'Open local jobs'}</button></div></td></tr>)}
     </tbody></table> : <p className="muted">No queued, running, failed, or recent benchmark work. Start a local/cloud run from Run Builder or download a local model from Settings.</p>}
   </div>;
 }
@@ -891,10 +967,15 @@ function buildActiveWorkRows(runJobs: RunJob[], downloadJobs: HuggingFaceDownloa
       const percent = job.total > 0 ? Math.min(100, Math.max(0, (job.completed / job.total) * 100)) : null;
       return {
         key: `run-${job.id}`,
+        id: job.id,
+        shortId: job.id.slice(0, 8),
+        workType: 'run' as const,
         kind: 'Run',
         label: `${job.benchmarkPackId} / ${job.id.slice(0, 8)}`,
         status: job.status,
         active: isJobActive(job),
+        retryable: isJobRetryable(job),
+        cancellable: isJobActive(job),
         progress: job.total > 0 ? `${job.completed}/${job.total}` : `${job.completed}/-`,
         percent,
         message: job.error?.trim() || job.message,
@@ -906,10 +987,15 @@ function buildActiveWorkRows(runJobs: RunJob[], downloadJobs: HuggingFaceDownloa
       const percent = downloadJobPercent(job);
       return {
         key: `download-${job.id}`,
+        id: job.id,
+        shortId: job.id.slice(0, 8),
+        workType: 'download' as const,
         kind: 'Download',
         label: `${job.repoId}${job.selectedFile ? ` / ${job.selectedFile}` : ''}`,
         status: job.status,
         active: isDownloadJobActive(job),
+        retryable: isDownloadJobRetryable(job),
+        cancellable: isDownloadJobActive(job),
         progress: percent == null ? formatBytes(job.transferredBytes) : `${percent.toFixed(0)}%`,
         percent,
         message: job.error?.trim() || job.message,
@@ -919,10 +1005,15 @@ function buildActiveWorkRows(runJobs: RunJob[], downloadJobs: HuggingFaceDownloa
     }),
     ...serverJobs.map(job => ({
       key: `server-${job.id}`,
+      id: job.id,
+      shortId: job.id.slice(0, 8),
+      workType: 'server' as const,
       kind: 'Server',
       label: `${job.repoId}${job.selectedFile ? ` / ${job.selectedFile}` : ''}`,
       status: job.status,
       active: isServerJobActive(job),
+      retryable: isServerJobRetryable(job),
+      cancellable: isServerJobActive(job),
       progress: `:${job.port}`,
       percent: isServerJobActive(job) ? 50 : job.status === 'completed' ? 100 : null,
       message: job.error?.trim() || job.message,
@@ -936,7 +1027,7 @@ function buildActiveWorkRows(runJobs: RunJob[], downloadJobs: HuggingFaceDownloa
 }
 
 function workNeedsAttention(row: ActiveWorkRow) {
-  return row.status === 'failed' || row.status === 'cancelled';
+  return row.retryable;
 }
 
 function benchmarkWorkspaceNeedsSetup(
