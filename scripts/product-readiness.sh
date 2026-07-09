@@ -68,6 +68,12 @@ latest_readiness_summary() {
   printf "%s\n" "$fallback"
 }
 
+current_git_commit() {
+  if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$ROOT" rev-parse HEAD 2>/dev/null || true
+  fi
+}
+
 check_git_state() {
   if ! command -v git >/dev/null 2>&1 || ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warn "git state not checked; this directory is not a Git worktree"
@@ -100,11 +106,28 @@ check_latest_readiness() {
   fi
   local mode
   mode="$(awk -F': ' '/^Mode:/ {print $2; exit}' "$summary")"
+  local summary_commit summary_worktree current_commit
+  summary_commit="$(awk -F': ' '/^Git commit:/ {print $2; exit}' "$summary")"
+  summary_worktree="$(awk -F': ' '/^Git worktree:/ {print $2; exit}' "$summary")"
+  current_commit="$(current_git_commit)"
   if grep -q '^Benchmark-readiness passed\.$' "$summary"; then
     if [[ "$mode" == "full" ]]; then
       pass "latest full benchmark-readiness passed ($summary)"
     else
       warn "latest benchmark-readiness passed in $mode mode; run make benchmark-readiness-full before packaging"
+    fi
+    if [[ -n "$current_commit" ]]; then
+      if [[ -z "$summary_commit" || "$summary_commit" == "unavailable" ]]; then
+        warn "benchmark-readiness summary has no Git commit metadata; rerun make benchmark-readiness-full on the current checkout"
+      elif [[ "$summary_commit" != "$current_commit" ]]; then
+        warn "benchmark-readiness summary is for commit ${summary_commit:0:12}, current commit is ${current_commit:0:12}; rerun make benchmark-readiness-full"
+      elif [[ "$summary_worktree" == "dirty" ]]; then
+        warn "benchmark-readiness summary was captured with a dirty worktree; rerun make benchmark-readiness-full from a clean checkout"
+      else
+        pass "benchmark-readiness evidence matches current commit ${current_commit:0:12}"
+      fi
+    elif [[ -z "$summary_commit" || "$summary_commit" == "unavailable" ]]; then
+      warn "benchmark-readiness summary and current checkout have no Git commit metadata"
     fi
   else
     fail "latest benchmark-readiness summary is not passing ($summary)"

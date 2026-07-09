@@ -378,7 +378,7 @@ Run these from the repository root.
 | `make benchmark-readiness` | Offline readiness gate for local/cloud benchmarking, worker harness imports, and report evidence. |
 | `make dependency-audit` | Verify target-specific dependency advisory exceptions against the supported macOS build graph. |
 | `make benchmark-readiness-full` | Extended gate before packaging or handoff. |
-| `make product-readiness` | Summarize local readiness evidence and external live-cloud/signing blockers without spending credits or requiring Apple credentials. |
+| `make product-readiness` | Summarize local readiness evidence, check that readiness evidence matches the current commit, and report external live-cloud/signing blockers without spending credits or requiring Apple credentials. |
 | `make live-cloud-smoke` | Optional real-provider validation with setup guidance; does not run a benchmark unless `BENCHFORGE_LIVE_CLOUD_RUN=1` is set. |
 | `make live-cloud-run` | Validate configured real providers and run the low-token `llm-connectivity` live benchmark. |
 | `make live-cloud-run-basics` | Validate configured real providers and run the same `llm-basics` pack against them. |
@@ -399,7 +399,7 @@ Run these from the repository root.
 
 Use focused `make *-smoke` targets when changing a specific workflow. Use `make benchmark-readiness` before handing benchmark-critical changes to another user.
 Readiness targets are time-bounded by default: 15 minutes per target for quick mode and 30 minutes for full mode. Set `BENCHFORGE_READINESS_TARGET_TIMEOUT_SECONDS=0` to disable that bound, or set a custom number of seconds when debugging slow hardware or downloads.
-Use `make product-readiness` before a release handoff to see which local gates are proven and which external live-provider or Apple distribution checks still need credentials.
+Use `make product-readiness` before a release handoff to see which local gates are proven, whether the latest readiness summary belongs to the current commit, and which external live-provider or Apple distribution checks still need credentials.
 `make product-readiness` detects provider keys saved by the app in macOS Keychain as well as shell environment variables, but it still will not contact live providers unless `BENCHFORGE_PRODUCT_READINESS_RUN_LIVE=1` is set.
 The in-app Doctor and Dashboard surface the same product-readiness split: validated remote cloud targets count as live-provider evidence, while signed/notarized public distribution stays explicit until Apple release credentials are used.
 

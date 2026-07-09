@@ -11,6 +11,9 @@ RUN_DIR="$LOG_ROOT/$STAMP-$$"
 SUMMARY="$RUN_DIR/summary.txt"
 SKIP_PROCESS_POSTFLIGHT="${BENCHFORGE_READINESS_SKIP_PROCESS_POSTFLIGHT:-0}"
 TARGET_TIMEOUT_SECONDS="${BENCHFORGE_READINESS_TARGET_TIMEOUT_SECONDS:-}"
+GIT_COMMIT=""
+GIT_BRANCH=""
+GIT_WORKTREE_STATE="unavailable"
 
 case "$MODE" in
   quick|full) ;;
@@ -32,6 +35,16 @@ fi
 if ! [[ "$TARGET_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]]; then
   echo "BENCHFORGE_READINESS_TARGET_TIMEOUT_SECONDS must be a non-negative integer"
   exit 2
+fi
+
+if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  GIT_COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+  GIT_BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [[ -z "$(git -C "$ROOT" status --short 2>/dev/null)" ]]; then
+    GIT_WORKTREE_STATE="clean"
+  else
+    GIT_WORKTREE_STATE="dirty"
+  fi
 fi
 
 mkdir -p "$RUN_DIR"
@@ -162,6 +175,15 @@ stop_after_failure_if_needed() {
 record "BenchForge benchmark-readiness gate"
 record "Mode: $MODE"
 record "Logs: $RUN_DIR"
+if [[ -n "$GIT_COMMIT" ]]; then
+  record "Git commit: $GIT_COMMIT"
+  record "Git branch: ${GIT_BRANCH:-unknown}"
+  record "Git worktree: $GIT_WORKTREE_STATE"
+else
+  record "Git commit: unavailable"
+  record "Git branch: unavailable"
+  record "Git worktree: $GIT_WORKTREE_STATE"
+fi
 if [[ "$TARGET_TIMEOUT_SECONDS" -eq 0 ]]; then
   record "Per-target timeout: disabled"
 else
