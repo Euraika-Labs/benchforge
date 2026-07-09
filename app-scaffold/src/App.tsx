@@ -2529,8 +2529,10 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       const plannedTarget = plannedModelTarget(id, name, selectedAdapter.id, baseUrl, cloudCatalogPricingTarget(nextModel));
       const targetUniverse = targetListWithOverride(plannedTarget, targets);
       const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
-      const autoBenchmarkNeedsPricing = autoBenchmarkAfterAdd
-        && cappedIntentHasUnpricedCloudTarget(benchmarkIntent, targetUniverse);
+      const autoBenchmarkPricingTargetIds = autoBenchmarkAfterAdd
+        ? unpricedCloudTargetIdsForIntent(benchmarkIntent, targetUniverse)
+        : [];
+      const autoBenchmarkNeedsPricing = autoBenchmarkPricingTargetIds.length > 0;
       setMessage(`Adding ${nextModel.model} and validating target`);
       const handoff = await createTargetWithBenchmarkHandoff(
         targetRequest,
@@ -2562,7 +2564,10 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         handoff.runJob ?? null,
         handoff.benchmarkError ?? null,
         false,
-        { pendingAutoBenchmarkPackId: autoBenchmarkNeedsPricing ? packId : '' },
+        {
+          pendingAutoBenchmarkPackId: autoBenchmarkNeedsPricing ? packId : '',
+          pendingAutoBenchmarkPricingTargetIds: autoBenchmarkPricingTargetIds,
+        },
       );
     } finally {
       setCatalogAddBusyModel('');
@@ -2950,9 +2955,13 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       const plannedTarget = localRuntimePlannedTarget(runtime, model);
       const targetUniverse = targetListWithOverride(plannedTarget, targets);
       const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
+      const autoBenchmarkPricingTargetIds = autoBenchmarkAfterAdd
+        ? unpricedCloudTargetIdsForIntent(benchmarkIntent, targetUniverse)
+        : [];
+      const autoBenchmarkNeedsPricing = autoBenchmarkPricingTargetIds.length > 0;
       const handoff = await createTargetWithBenchmarkHandoff(
         targetRequest,
-        autoBenchmarkAfterAdd
+        autoBenchmarkAfterAdd && !autoBenchmarkNeedsPricing
           ? {
               benchmarkPackId: packId,
               benchmarkTargetIds: benchmarkIntent.targetIds,
@@ -2979,6 +2988,11 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         false,
         handoff.runJob ?? null,
         handoff.benchmarkError ?? null,
+        false,
+        {
+          pendingAutoBenchmarkPackId: autoBenchmarkNeedsPricing ? packId : '',
+          pendingAutoBenchmarkPricingTargetIds: autoBenchmarkPricingTargetIds,
+        },
       );
     } finally {
       setAddingLocalRuntimeId('');
@@ -3127,8 +3141,10 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       });
       const targetUniverse = targetListWithOverride(plannedTarget, targets);
       const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
-      const autoBenchmarkNeedsPricing = autoBenchmarkAfterAdd
-        && cappedIntentHasUnpricedCloudTarget(benchmarkIntent, targetUniverse);
+      const autoBenchmarkPricingTargetIds = autoBenchmarkAfterAdd
+        ? unpricedCloudTargetIdsForIntent(benchmarkIntent, targetUniverse)
+        : [];
+      const autoBenchmarkNeedsPricing = autoBenchmarkPricingTargetIds.length > 0;
       const handoff = await createTargetWithBenchmarkHandoff(
         targetRequest,
         autoBenchmarkAfterAdd && !autoBenchmarkNeedsPricing
@@ -3163,7 +3179,10 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         handoff.runJob ?? null,
         handoff.benchmarkError ?? null,
         false,
-        { pendingAutoBenchmarkPackId: autoBenchmarkNeedsPricing ? packId : '' },
+        {
+          pendingAutoBenchmarkPackId: autoBenchmarkNeedsPricing ? packId : '',
+          pendingAutoBenchmarkPricingTargetIds: autoBenchmarkPricingTargetIds,
+        },
       );
       return;
     }
@@ -3199,7 +3218,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     prestartedJob: RunJob | null = null,
     benchmarkError: string | null = null,
     wasRepairingValidationError = false,
-    options: { pendingAutoBenchmarkPackId?: string; runPendingAutoBenchmarkPackId?: string } = {},
+    options: { pendingAutoBenchmarkPackId?: string; pendingAutoBenchmarkPricingTargetIds?: string[]; runPendingAutoBenchmarkPackId?: string } = {},
   ) {
     await onRefresh();
     if (!validation) {
@@ -3219,8 +3238,12 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         const intent = automaticModelBenchmarkIntentForTarget(target, targetUniverse, packId, autoBenchmarkTargetIds);
         const scopeLabel = intent.targetIds.length > 1 ? 'local/cloud comparison' : 'benchmark';
         if (cappedIntentHasUnpricedCloudTarget(intent, targetUniverse)) {
-          await loadTargetForEdit(target, { pendingAutoBenchmarkPackId: packId });
-          setMessage(`Target ${name} ${validationNote}. Add input/output pricing before BenchForge starts a capped ${packLabel} ${scopeLabel}.`);
+          const pricingTargetIds = unpricedCloudTargetIdsForIntent(intent, targetUniverse);
+          const repairTarget = firstEditableTargetById(pricingTargetIds, targetUniverse) ?? target;
+          setAutoBenchmarkTargetIds(intent.targetIds);
+          await loadTargetForEdit(repairTarget, { pendingAutoBenchmarkPackId: packId });
+          const repairNames = targetLabelsById(pricingTargetIds, targetUniverse);
+          setMessage(`Target ${name} ${validationNote}. Add input/output pricing for ${previewList(repairNames)} before BenchForge starts a capped ${packLabel} ${scopeLabel}.`);
           return;
         }
         try {
@@ -3270,8 +3293,14 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     const intent = automaticModelBenchmarkIntentForTarget(target, targetUniverse, packId, autoBenchmarkTargetIds);
     const scopeLabel = intent.targetIds.length > 1 ? 'local/cloud comparison' : 'benchmark';
     if (options.pendingAutoBenchmarkPackId) {
-      await loadTargetForEdit(target, { pendingAutoBenchmarkPackId: options.pendingAutoBenchmarkPackId });
-      setMessage(`Target ${name} ${validationNote}. Add input/output pricing before BenchForge starts a capped ${packLabel} ${scopeLabel}.`);
+      const pricingTargetIds = options.pendingAutoBenchmarkPricingTargetIds?.length
+        ? options.pendingAutoBenchmarkPricingTargetIds
+        : unpricedCloudTargetIdsForIntent(intent, targetUniverse);
+      const repairTarget = firstEditableTargetById(pricingTargetIds, targetUniverse) ?? target;
+      setAutoBenchmarkTargetIds(intent.targetIds);
+      await loadTargetForEdit(repairTarget, { pendingAutoBenchmarkPackId: options.pendingAutoBenchmarkPackId });
+      const repairNames = targetLabelsById(pricingTargetIds, targetUniverse);
+      setMessage(`Target ${name} ${validationNote}. Add input/output pricing for ${previewList(repairNames)} before BenchForge starts a capped ${packLabel} ${scopeLabel}.`);
       return;
     }
     if (!autoBenchmarkAfterAdd) {
@@ -7935,6 +7964,18 @@ function targetListWithOverride(target: Target, targets: Target[]) {
   return [...targets.filter(candidate => candidate.id !== target.id), target];
 }
 
+function firstEditableTargetById(targetIds: string[], targets: Target[]) {
+  const targetById = new Map(targets.map(target => [target.id, target]));
+  return targetIds
+    .map(id => targetById.get(id))
+    .find((target): target is Target => Boolean(target && targetRepairTargetCanEdit(target)));
+}
+
+function targetLabelsById(targetIds: string[], targets: Target[]) {
+  const targetById = new Map(targets.map(target => [target.id, target]));
+  return targetIds.map(id => targetById.get(id)?.name || id);
+}
+
 function cappedIntentHasUnpricedCloudTarget(intent: RunBuilderIntent, targets: Target[]) {
   if (typeof intent.maxCostUsd !== 'number' || !Number.isFinite(intent.maxCostUsd)) {
     return false;
@@ -9171,7 +9212,7 @@ function scopedModelBenchmarkTargetIdsForTarget(target: Target, targets: Target[
 
 function automaticModelBenchmarkIntentForTarget(target: Target, targets: Target[], benchmarkPackId: string, scopedTargetIds: string[] = []): RunBuilderIntent {
   const settings = automaticModelBenchmarkSettings(benchmarkPackId);
-  const scopedRunTargetIds = scopedModelBenchmarkTargetIdsForTarget(target, targets, scopedTargetIds, { requirePricedCloud: true });
+  const scopedRunTargetIds = scopedModelBenchmarkTargetIdsForTarget(target, targets, scopedTargetIds);
   if (scopedRunTargetIds) {
     return {
       ...localCloudRunBuilderIntent(scopedRunTargetIds, benchmarkPackId),
@@ -9181,7 +9222,7 @@ function automaticModelBenchmarkIntentForTarget(target: Target, targets: Target[
       maxCostUsd: automaticModelBenchmarkMaxCostUsd(benchmarkPackId),
     };
   }
-  const comparisonIntent = modelComparisonIntentForTarget(target, targets, benchmarkPackId, { requirePricedCloud: true });
+  const comparisonIntent = modelComparisonIntentForTarget(target, targets, benchmarkPackId);
   if (comparisonIntent) {
     return {
       ...comparisonIntent,
