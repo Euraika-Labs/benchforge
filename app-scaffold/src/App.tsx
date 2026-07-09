@@ -581,6 +581,16 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const recommendedComparisonPack = useMemo(() => recommendedComparisonPackId(packs), [packs]);
   const hasReliabilityPack = packs.some(pack => pack.id === 'llm-reliability');
   const activeRunInProgress = runJobs.some(isJobActive);
+  const dashboardEvidencePricingRepairTargetIds = useMemo(
+    () => dashboardEvidence ? evidencePricingRepairTargetIds(dashboardEvidence, targetRankings, targetById) : [],
+    [dashboardEvidence, targetRankings, targetById],
+  );
+  const dashboardEvidenceNextRunIntent = useMemo(
+    () => dashboardEvidence && !dashboardEvidencePricingRepairTargetIds.length
+      ? evidenceNextRunIntent(dashboardEvidence, targetRankings, targets)
+      : null,
+    [dashboardEvidence, dashboardEvidencePricingRepairTargetIds, targetRankings, targets],
+  );
   const primaryBenchmarkActionLabel = comparisonNeedsPricing ? 'Add cloud pricing' : comparisonReady ? 'Run model comparison' : dashboardBenchmarkStepLabel(nextBenchmarkStep);
   const primaryBenchmarkActionDisabled = busy || (comparisonReady && !comparisonNeedsPricing && activeRunInProgress);
   const primaryBenchmarkActionTitle = activeRunInProgress && comparisonReady
@@ -603,15 +613,13 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   function openCloudTargetSetup() {
     openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: recommendedComparisonPack });
   }
-  async function runDashboardComparison(
-    benchmarkPackId: string,
-    targetIds = recommendedTargetIds,
-    scopeLabelOverride = '',
-  ) {
-    const intent = localCloudRunBuilderIntent(targetIds, benchmarkPackId);
+  async function runDashboardIntent(intent: RunBuilderIntent, scopeLabelOverride = 'local/cloud comparison') {
+    const benchmarkPackId = intent.benchmarkPackId ?? recommendedComparisonPack;
+    const selectedTaskIds = intent.taskIds?.filter(id => id.trim()) ?? [];
     setBusy(true);
     try {
-      setMessage(`Validating ${intent.targetIds.length} target(s) before starting ${benchmarkPackLabel(benchmarkPackId)}`);
+      const selectedTaskNote = selectedTaskIds.length ? ` with ${selectedTaskIds.length} selected task(s)` : '';
+      setMessage(`Validating ${intent.targetIds.length} target(s) before starting ${benchmarkPackLabel(benchmarkPackId)}${selectedTaskNote}`);
       const validationResults = await Promise.all(intent.targetIds.map(id => validateTarget(id)));
       await refresh();
       const blockers = validationResults.filter(result => result.status === 'error');
@@ -621,17 +629,18 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         return;
       }
       const warningNote = validationResults.some(result => result.status !== 'ok') ? `; warnings: ${formatValidationCodeCounts(validationResults.filter(result => result.status !== 'ok'))}` : '';
-      const scopeNote = scopeLabelOverride || (allComparableTargetIds.length > intent.targetIds.length ? 'recommended pair' : 'local/cloud comparison');
+      const scopeNote = scopeLabelOverride;
       const skippedPricingNote = skippedUnpricedCloudTargetIds.length ? `. Skipped unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}` : '';
-      setMessage(`Starting ${benchmarkPackLabel(benchmarkPackId)} ${scopeNote} with ${intent.targetIds.length} target(s), ${intent.repetitions} repetitions, ${intent.warmupRuns} warmup, ${formatCost(intent.maxCostUsd ?? defaultComparisonMaxCostUsd)} cap${warningNote}${skippedPricingNote}`);
+      setMessage(`Starting ${benchmarkPackLabel(benchmarkPackId)} ${scopeNote} with ${intent.targetIds.length} target(s), ${intent.repetitions} repetitions, ${intent.warmupRuns} warmup${selectedTaskNote}, ${formatCost(intent.maxCostUsd ?? defaultComparisonMaxCostUsd)} cap${warningNote}${skippedPricingNote}`);
       const job = await startRunJob(
         intent.targetIds,
         false,
-        intent.benchmarkPackId ?? benchmarkPackId,
+        benchmarkPackId,
         intent.repetitions ?? 3,
         intent.warmupRuns ?? 1,
         intent.concurrency ?? 1,
         intent.maxCostUsd ?? defaultComparisonMaxCostUsd,
+        selectedTaskIds,
       );
       await refresh();
       if (isJobActive(job)) {
@@ -652,6 +661,22 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     } finally {
       setBusy(false);
     }
+  }
+  async function runDashboardComparison(
+    benchmarkPackId: string,
+    targetIds = recommendedTargetIds,
+    scopeLabelOverride = '',
+  ) {
+    const intent = localCloudRunBuilderIntent(targetIds, benchmarkPackId);
+    const scopeNote = scopeLabelOverride || (allComparableTargetIds.length > intent.targetIds.length ? 'recommended pair' : 'local/cloud comparison');
+    await runDashboardIntent(intent, scopeNote);
+  }
+  function runDashboardEvidenceFollowUp(intent: RunBuilderIntent) {
+    void runDashboardIntent(intent, 'evidence follow-up');
+  }
+  function openDashboardEvidencePricingRepair(targetIds: string[]) {
+    openTargetRepair({ targetIds, code: 'pricing_assumption' });
+    setMessage(`Add pricing before running the recommended evidence follow-up: ${previewList(targetIds)}`);
   }
   function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
     if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && recommendedTargetIds.length >= 2) {
@@ -710,7 +735,17 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     <Card title="Local runtimes" value={localRuntimeCheck.value} note={localRuntimeCheck.note} />
     <Card title="Sandbox" value={sandboxCheck.value} note={sandboxCheck.note} />
   </div>
-    <DashboardModelSelectionPanel rankings={targetRankings} evidence={dashboardEvidence} recentCost={weeklyCost} setPage={setPage} />
+    <DashboardModelSelectionPanel
+      rankings={targetRankings}
+      evidence={dashboardEvidence}
+      recentCost={weeklyCost}
+      nextRunIntent={dashboardEvidenceNextRunIntent}
+      pricingRepairTargetIds={dashboardEvidencePricingRepairTargetIds}
+      busy={busy || activeRunInProgress}
+      setPage={setPage}
+      onRunNextEvidence={runDashboardEvidenceFollowUp}
+      onRepairPricing={openDashboardEvidencePricingRepair}
+    />
     <ActiveWorkPanel runJobs={runJobs} downloadJobs={downloadJobs} serverJobs={serverJobs} setPage={setPage} />
     <div className="panel readiness-panel">
       <div className="panel-head"><h2>Benchmark Readiness</h2><button onClick={() => setPage('doctor')}><ShieldCheck size={14} />Doctor</button></div>
@@ -744,10 +779,43 @@ interface DashboardRecentCost {
   costUsd: number | null;
 }
 
-function DashboardModelSelectionPanel({ rankings, evidence, recentCost, setPage }: { rankings: TargetRankingRow[]; evidence: ComparisonEvidenceAssessment | null; recentCost: DashboardRecentCost; setPage: (page: Page) => void }) {
+function DashboardModelSelectionPanel({
+  rankings,
+  evidence,
+  recentCost,
+  nextRunIntent,
+  pricingRepairTargetIds,
+  busy,
+  setPage,
+  onRunNextEvidence,
+  onRepairPricing,
+}: {
+  rankings: TargetRankingRow[];
+  evidence: ComparisonEvidenceAssessment | null;
+  recentCost: DashboardRecentCost;
+  nextRunIntent: RunBuilderIntent | null;
+  pricingRepairTargetIds: string[];
+  busy: boolean;
+  setPage: (page: Page) => void;
+  onRunNextEvidence: (intent: RunBuilderIntent) => void;
+  onRepairPricing: (targetIds: string[]) => void;
+}) {
   const leaders = rankings.slice(0, 3);
+  const canImproveEvidence = Boolean(evidence && evidence.grade !== 'comparison_ready');
+  const nextRunTitle = nextRunIntent
+    ? `Validate and run ${nextRunIntent.targetIds.length} target(s)${nextRunIntent.taskIds?.length ? ` with ${nextRunIntent.taskIds.length} selected task(s)` : ''}`
+    : pricingRepairTargetIds.length
+      ? `Add pricing for ${previewList(pricingRepairTargetIds)} before running the evidence follow-up`
+      : canImproveEvidence
+        ? 'Open Results for detailed evidence follow-up options'
+        : 'Evidence is already comparison-ready';
   return <div className="panel dashboard-ranking-panel">
-    <div className="panel-head"><h2>Model Selection</h2><button onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button></div>
+    <div className="panel-head"><h2>Model Selection</h2><div className="actions">
+      {canImproveEvidence && nextRunIntent ? <button disabled={busy} title={busy ? 'A benchmark job is already running' : nextRunTitle} onClick={() => onRunNextEvidence(nextRunIntent)}><Play size={14} />Improve evidence</button> : null}
+      {canImproveEvidence && !nextRunIntent && pricingRepairTargetIds.length ? <button title={nextRunTitle} onClick={() => onRepairPricing(pricingRepairTargetIds)}><Wrench size={14} />Repair pricing</button> : null}
+      {canImproveEvidence && !nextRunIntent && !pricingRepairTargetIds.length ? <button title={nextRunTitle} onClick={() => setPage('results')}><ClipboardCheck size={14} />Evidence details</button> : null}
+      <button onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
+    </div></div>
     {leaders.length ? <>
       <p className="muted">Uses the same weighted target ranking and evidence grading as Results across stored benchmark history.</p>
       {evidence ? <p className="muted"><strong>Evidence:</strong> {evidence.label}. {dashboardEvidenceNote(evidence)}</p> : null}
@@ -6963,7 +7031,7 @@ function buildResultEvidenceSummary(comparisonRows: ComparisonRow[], taskRows: T
   }
   const evidence = comparisonEvidenceAssessment(comparisonRows, taskRows, targetRows, packCalibrationIssues);
   const targetById = new Map(targets.map(target => [target.id, target]));
-  const pricingRepairTargetIds = pricingAssumptionRepairTargetIds(evidence, targetRows, targetById);
+  const pricingRepairTargetIds = evidencePricingRepairTargetIds(evidence, targetRows, targetById);
 
   return {
     tone: evidence.tone,
@@ -6984,7 +7052,7 @@ function evidenceNextRunIntent(evidence: ComparisonEvidenceAssessment, targetRow
     return null;
   }
   const targetById = new Map(targets.map(target => [target.id, target]));
-  if (pricingAssumptionRepairTargetIds(evidence, targetRows, targetById).length) {
+  if (evidencePricingRepairTargetIds(evidence, targetRows, targetById).length) {
     return null;
   }
   const coverageFollowUp = coverageTaskFollowUp(evidence);
@@ -7010,6 +7078,26 @@ function evidenceNextRunIntent(evidence: ComparisonEvidenceAssessment, targetRow
   }
   const targetIds = unionStrings(runnableTargets.map(target => target.id));
   return localCloudRunBuilderIntent(targetIds, evidenceNextPackId(targetRows));
+}
+
+function evidencePricingRepairTargetIds(evidence: ComparisonEvidenceAssessment, targetRows: TargetRankingRow[], targetById: Map<string, Target>) {
+  return unionStrings([
+    ...costCoverageRepairTargetIds(evidence, targetRows, targetById),
+    ...pricingAssumptionRepairTargetIds(evidence, targetRows, targetById),
+  ]).sort();
+}
+
+function costCoverageRepairTargetIds(evidence: ComparisonEvidenceAssessment, targetRows: TargetRankingRow[], targetById: Map<string, Target>) {
+  if (!evidence.risks.includes('cost_coverage_gap')) {
+    return [];
+  }
+  return targetRows
+    .filter(row => row.runs > 0 && row.costedRuns < row.runs)
+    .map(row => targetById.get(row.targetId))
+    .filter((target): target is Target => Boolean(target))
+    .filter(target => isCloudModelTarget(target) && !targetHasInputOutputPricing(target))
+    .map(target => target.id)
+    .sort();
 }
 
 function pricingAssumptionRepairTargetIds(evidence: ComparisonEvidenceAssessment, targetRows: TargetRankingRow[], targetById: Map<string, Target>) {
