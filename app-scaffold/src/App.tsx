@@ -2091,6 +2091,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
   const [editingHarnessTargetId, setEditingHarnessTargetId] = useState('');
   const [loadingTargetId, setLoadingTargetId] = useState('');
   const [duplicatingTargetId, setDuplicatingTargetId] = useState('');
+  const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const autoLocalRuntimeDetectAttemptedRef = useRef(false);
 
   const selectedAdapter = runnableAdapters.find(adapter => adapter.id === adapterId);
@@ -2450,6 +2451,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       }
       const envHint = status.envVar ? ` or set ${status.envVar}` : ' or configure an API key environment variable';
       setMessage(`Paste an API key for ${adapter.name}${envHint} before saving this cloud target.`);
+      apiKeyInputRef.current?.focus();
       return false;
     } finally {
       setProviderKeyStatusBusy(false);
@@ -2538,7 +2540,18 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     return automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
   }
 
+  function cloudCatalogNeedsKeyBeforeAdd() {
+    return Boolean(selectedAdapter
+      && adapterNeedsApiKey(selectedAdapter, baseUrl)
+      && !apiKey.trim()
+      && !apiKeyEnv.trim()
+      && !providerKeyAvailable);
+  }
+
   function cloudCatalogActionLabel(nextModel: CloudModel) {
+    if (cloudCatalogNeedsKeyBeforeAdd()) {
+      return 'Add key';
+    }
     if (!autoBenchmarkAfterAdd) {
       return 'Add target';
     }
@@ -3781,7 +3794,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         <label>Model preset <select value={modelPresetId} onChange={event => applyModelPreset(event.target.value)} disabled={!modelPresets.length}><option value="custom">Custom model</option>{modelPresets.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
         <label>Model <input value={model} onChange={event => handleModelChange(event.target.value)} placeholder={selectedAdapter?.id === 'azure-openai' ? 'Azure deployment name' : 'gpt-4.1-mini, claude-sonnet-4-5, qwen2.5-coder'} /></label>
         {baseUrlIsPrimary ? <label>Base URL <input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={selectedAdapter?.defaultBaseUrl ?? 'optional'} /></label> : null}
-        <label>API key <input type="password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={editingTargetId ? 'leave blank to keep saved key' : needsApiKey ? 'saved to Keychain' : 'optional for local endpoints'} /></label>
+        <label>API key <input ref={apiKeyInputRef} type="password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={editingTargetId ? 'leave blank to keep saved key' : needsApiKey ? 'saved to Keychain' : 'optional for local endpoints'} /></label>
         <div className="key-status"><span className={`pill ${providerKeyState.className}`}>{providerKeyState.label}</span><span>{providerKeyState.detail}</span>{needsApiKey ? <button type="button" disabled={providerKeyStatusBusy} onClick={() => refreshSelectedProviderKeyStatus().catch(error => setMessage(String(error)))}><RefreshCw size={14} /></button> : null}</div>
         <details className="advanced-section" open={targetAdvancedOpen} onToggle={event => setTargetAdvancedOpen(event.currentTarget.open)}>
           <summary><SlidersHorizontal size={14} />Advanced</summary>
@@ -3831,11 +3844,15 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         const catalogPlannedTarget = cloudCatalogPlannedTarget(item);
         const catalogUniverse = catalogPlannedTarget ? targetListWithOverride(catalogPlannedTarget, targets) : targets;
         const catalogNeedsPricing = Boolean(catalogIntent && cappedIntentHasUnpricedCloudTarget(catalogIntent, catalogUniverse));
+        const catalogNeedsKey = cloudCatalogNeedsKeyBeforeAdd();
         const catalogActionTitle = editingTargetId
           ? 'Finish or cancel the current edit before adding a catalog model'
-          : catalogNeedsPricing
+          : catalogNeedsKey
+            ? `Paste an API key for ${selectedAdapter?.name ?? item.provider} before adding this cloud target`
+            : catalogNeedsPricing
             ? 'Save and validate this cloud target, then add pricing before the capped comparison can run'
             : 'Save, validate, and use the current automatic benchmark setting';
+        const catalogActionIcon = catalogNeedsKey || catalogNeedsPricing ? <Pencil size={16} /> : <ClipboardCheck size={16} />;
         return <div className="model-row" key={`${item.source}-${item.model}`}>
           <div className="model-main">
             <strong>{item.name}</strong>
@@ -3849,7 +3866,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
             {item.detail ? <span className="muted">{item.detail}</span> : null}
           </div>
           <div className="model-actions">
-            <button disabled={Boolean(catalogAddBusyModel) || Boolean(editingTargetId)} title={catalogActionTitle} onClick={() => addCloudModelFromCatalog(item).catch(error => setMessage(String(error)))}>{catalogNeedsPricing ? <Pencil size={16} /> : <ClipboardCheck size={16} />}{catalogAddBusyModel === `${item.source}:${item.model}` ? 'Adding' : cloudCatalogActionLabel(item)}</button>
+            <button disabled={Boolean(catalogAddBusyModel) || Boolean(editingTargetId)} title={catalogActionTitle} onClick={() => addCloudModelFromCatalog(item).catch(error => setMessage(String(error)))}>{catalogActionIcon}{catalogAddBusyModel === `${item.source}:${item.model}` ? 'Adding' : cloudCatalogActionLabel(item)}</button>
             <button disabled={Boolean(catalogAddBusyModel)} onClick={() => useCloudModel(item)}><Plus size={16} />Use</button>
           </div>
         </div>;
