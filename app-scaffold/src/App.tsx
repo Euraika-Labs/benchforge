@@ -1771,6 +1771,51 @@ function AutomaticBenchmarkInlinePreview({
   </div>;
 }
 
+function PendingAutomaticBenchmarkPanel({
+  plannedTarget,
+  intent,
+  targets,
+  packLabel,
+  needsPricing,
+  unpricedCloudTargetIds,
+}: {
+  plannedTarget: Target | null;
+  intent: RunBuilderIntent | null;
+  targets: Target[];
+  packLabel: string;
+  needsPricing: boolean;
+  unpricedCloudTargetIds: string[];
+}) {
+  const targetById = new Map(targets.map(target => [target.id, target]));
+  const targetNames = intent?.targetIds.map(id => automaticPreviewTargetLabel(id, plannedTarget, targetById)) ?? [];
+  const unpricedCloudNames = unpricedCloudTargetIds.map(id => automaticPreviewTargetLabel(id, plannedTarget, targetById));
+  const unpricedCloudLabel = previewList(unpricedCloudNames) || 'the selected cloud target';
+  const tone = needsPricing || !plannedTarget || !intent ? 'warn' : 'ok';
+  const headline = !plannedTarget || !intent
+    ? 'Fix target details to continue automatic benchmark'
+    : needsPricing
+    ? 'Add pricing to continue automatic benchmark'
+    : intent.targetIds.length > 1
+      ? 'Ready to compare after update'
+      : 'Ready to run after update';
+  const detail = !plannedTarget || !intent
+    ? 'Resolve the target fields above so BenchForge can rebuild the pending benchmark plan.'
+    : needsPricing
+      ? `Enter both input and output pricing for ${unpricedCloudLabel} and update the target. BenchForge will validate it, then queue the pending capped benchmark.`
+      : `Update the target to validate it and queue the pending ${packLabel} ${intent.targetIds.length > 1 ? 'local/cloud comparison' : 'benchmark'}.`;
+  return <div className={`preflight-box auto-benchmark-preview span-two ${tone}`}>
+    <div className="panel-head"><h2>Pending automatic benchmark</h2><span className={`pill ${tone}`}>{needsPricing ? 'pricing' : 'ready'}</span></div>
+    <p><strong>{headline}</strong></p>
+    <p>{detail}</p>
+    {intent ? <div className="mini-grid">
+      <span>{packLabel}</span>
+      <span>{targetNames.length ? previewList(targetNames, 4) : '-'}</span>
+      <span>{intent.repetitions ?? 1} rep / {intent.warmupRuns ?? 0} warmup</span>
+      <span>{typeof intent.maxCostUsd === 'number' ? `${formatCost(intent.maxCostUsd)} cap` : 'no cost cap'}</span>
+    </div> : null}
+  </div>;
+}
+
 function automaticPreviewTargetLabel(id: string, plannedTarget: Target | null, targetById: Map<string, Target>) {
   if (plannedTarget && id === plannedTarget.id) {
     return `new: ${plannedTarget.name}`;
@@ -2367,6 +2412,11 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       return 'Add target';
     }
     const intent = cloudCatalogBenchmarkIntent(nextModel);
+    const plannedTarget = cloudCatalogPlannedTarget(nextModel);
+    const targetUniverse = plannedTarget ? targetListWithOverride(plannedTarget, targets) : targets;
+    if (intent && cappedIntentHasUnpricedCloudTarget(intent, targetUniverse)) {
+      return 'Add + price';
+    }
     return intent && intent.targetIds.length > 1 ? 'Add + compare' : 'Add + run';
   }
 
@@ -2629,7 +2679,8 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       setSelectedCloudModel(null);
       setTargetAdvancedOpen(true);
       const pricingNote = matchedPresetFillsMissingPricing && matchingPreset ? `; prefilled missing pricing from ${matchingPreset.label}` : '';
-      setMessage(`Loaded ${exported.name} for editing${pricingNote}`);
+      const pendingNote = options.pendingAutoBenchmarkPackId ? '; update this target to continue the pending automatic benchmark' : '';
+      setMessage(`Loaded ${exported.name} for editing${pricingNote}${pendingNote}`);
     } catch (error) {
       setMessage(String(error));
     } finally {
@@ -3475,8 +3526,27 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
   }
 
   function modelTargetAddActionLabel() {
-    if (editingTargetId || !autoBenchmarkAfterAdd) {
-      return editingTargetId ? 'Update target' : 'Add target';
+    if (editingTargetId) {
+      if (editingTargetPendingAutoBenchmarkPackId) {
+        const plannedTarget = plannedModelTargetFromForm();
+        if (!plannedTarget) {
+          return 'Update target';
+        }
+        const targetUniverse = targetListWithOverride(plannedTarget, targets);
+        const intent = automaticModelBenchmarkIntentForTarget(
+          plannedTarget,
+          targetUniverse,
+          editingTargetPendingAutoBenchmarkPackId,
+          autoBenchmarkTargetIds,
+        );
+        if (!cappedIntentHasUnpricedCloudTarget(intent, targetUniverse)) {
+          return intent.targetIds.length > 1 ? 'Update + compare' : 'Update + run';
+        }
+      }
+      return 'Update target';
+    }
+    if (!autoBenchmarkAfterAdd) {
+      return 'Add target';
     }
     const plannedTarget = plannedModelTargetFromForm();
     if (!plannedTarget) {
@@ -3486,7 +3556,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     const targetUniverse = targetListWithOverride(plannedTarget, targets);
     const intent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
     if (cappedIntentHasUnpricedCloudTarget(intent, targetUniverse)) {
-      return 'Add target';
+      return 'Add + price';
     }
     return intent.targetIds.length > 1 ? 'Add + compare' : 'Add + run';
   }
@@ -3510,11 +3580,27 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     ? cappedIntentHasUnpricedCloudTarget(autoBenchmarkPreviewIntent, autoBenchmarkPreviewUniverse)
     : false;
   const autoBenchmarkPreviewUnpricedCloudIds = autoBenchmarkPreviewIntent
-    ? autoBenchmarkPreviewIntent.targetIds.filter(targetId => {
-        const target = autoBenchmarkPreviewUniverse.find(candidate => candidate.id === targetId);
-        return Boolean(target && isCloudModelTarget(target) && !targetHasInputOutputPricing(target));
-      })
+    ? unpricedCloudTargetIdsForIntent(autoBenchmarkPreviewIntent, autoBenchmarkPreviewUniverse)
     : [];
+  const pendingAutomaticBenchmarkPackId = editingTargetPendingAutoBenchmarkPackId;
+  const pendingAutomaticBenchmarkTarget = plannedModelTargetFromForm();
+  const pendingAutomaticBenchmarkUniverse = pendingAutomaticBenchmarkTarget
+    ? targetListWithOverride(pendingAutomaticBenchmarkTarget, targets)
+    : targets;
+  const pendingAutomaticBenchmarkIntent = pendingAutomaticBenchmarkPackId && pendingAutomaticBenchmarkTarget
+    ? automaticModelBenchmarkIntentForTarget(
+        pendingAutomaticBenchmarkTarget,
+        pendingAutomaticBenchmarkUniverse,
+        pendingAutomaticBenchmarkPackId,
+        autoBenchmarkTargetIds,
+      )
+    : null;
+  const pendingAutomaticBenchmarkUnpricedCloudIds = pendingAutomaticBenchmarkIntent
+    ? unpricedCloudTargetIdsForIntent(pendingAutomaticBenchmarkIntent, pendingAutomaticBenchmarkUniverse)
+    : [];
+  const pendingAutomaticBenchmarkNeedsPricing = pendingAutomaticBenchmarkIntent
+    ? cappedIntentHasUnpricedCloudTarget(pendingAutomaticBenchmarkIntent, pendingAutomaticBenchmarkUniverse)
+    : false;
 
   return <section><div className="section-head"><h1>Targets</h1><div className="actions"><button disabled={validating === 'all'} onClick={() => validateAll().catch(error => setMessage(String(error)))}><RefreshCw size={16} />Validate all</button><label className="compact-select">Compare pack <select value={comparisonPackId} onChange={event => setComparisonPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label><button disabled={comparisonActionDisabled} title={comparisonActionDisabled ? 'Add one enabled local model target and one enabled cloud model target' : comparisonNeedsCloudPricing ? 'Add input/output pricing to a cloud target before opening a capped comparison' : `Compare enabled local targets with ${pricedCloudComparisonTargetIds.length} priced cloud target(s)`} onClick={() => openAllLocalCloudComparison().catch(error => setMessage(String(error)))}>{comparisonNeedsCloudPricing ? <Pencil size={16} /> : <ClipboardCheck size={16} />}{comparisonNeedsCloudPricing ? 'Add cloud pricing' : 'Compare local/cloud'}</button><button onClick={() => addMock().catch(error => setMessage(String(error)))}><Plus size={16} />Mock target</button><button onClick={() => addWorkerHarness().catch(error => setMessage(String(error)))}><Plus size={16} />Worker harness</button></div></div>
     <div className="panel compact">
@@ -3556,6 +3642,14 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
           packLabel={benchmarkPackLabel(autoBenchmarkPreviewPackId, modelBenchmarkPacks)}
           needsPricing={autoBenchmarkPreviewNeedsPricing}
           unpricedCloudTargetIds={autoBenchmarkPreviewUnpricedCloudIds}
+        /> : null}
+        {editingTargetId && pendingAutomaticBenchmarkPackId ? <PendingAutomaticBenchmarkPanel
+          plannedTarget={pendingAutomaticBenchmarkTarget}
+          intent={pendingAutomaticBenchmarkIntent}
+          targets={pendingAutomaticBenchmarkUniverse}
+          packLabel={benchmarkPackLabel(pendingAutomaticBenchmarkPackId, modelBenchmarkPacks)}
+          needsPricing={pendingAutomaticBenchmarkNeedsPricing}
+          unpricedCloudTargetIds={pendingAutomaticBenchmarkUnpricedCloudIds}
         /> : null}
         <div className="form-actions"><button onClick={() => addModelTarget().catch(error => setMessage(String(error)))}>{editingTargetId ? <Pencil size={16} /> : <Plus size={16} />}{modelTargetActionLabel}</button>{editingTargetId ? <button onClick={() => clearTargetForm()}><RotateCcw size={16} />Cancel</button> : null}</div>
       </div>
@@ -3631,10 +3725,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
           ? cappedIntentHasUnpricedCloudTarget(runtimePreviewIntent, runtimePreviewUniverse)
           : false;
         const runtimePreviewUnpricedCloudIds = runtimePreviewIntent
-          ? runtimePreviewIntent.targetIds.filter(targetId => {
-              const target = runtimePreviewUniverse.find(candidate => candidate.id === targetId);
-              return Boolean(target && isCloudModelTarget(target) && !targetHasInputOutputPricing(target));
-            })
+          ? unpricedCloudTargetIdsForIntent(runtimePreviewIntent, runtimePreviewUniverse)
           : [];
         return <tr key={runtime.id}><td>{runtime.name}</td><td>{runtime.baseUrl}</td><td><span className={`pill ${runtime.status === 'ok' ? 'ok' : runtime.status === 'error' ? 'error' : 'warn'}`}>{runtime.status}</span> {runtime.detail}
           {runtime.modelSource ? <div className="tag-row"><span className="mini-tag" title={runtime.probeUrl ?? undefined}>{runtime.modelSource}</span></div> : null}
@@ -7848,8 +7939,15 @@ function cappedIntentHasUnpricedCloudTarget(intent: RunBuilderIntent, targets: T
   if (typeof intent.maxCostUsd !== 'number' || !Number.isFinite(intent.maxCostUsd)) {
     return false;
   }
+  return unpricedCloudTargetIdsForIntent(intent, targets).length > 0;
+}
+
+function unpricedCloudTargetIdsForIntent(intent: RunBuilderIntent | null, targets: Target[]) {
+  if (!intent) {
+    return [];
+  }
   const targetById = new Map(targets.map(target => [target.id, target]));
-  return intent.targetIds.some(targetId => {
+  return intent.targetIds.filter(targetId => {
     const target = targetById.get(targetId);
     return Boolean(target && isCloudModelTarget(target) && !targetHasInputOutputPricing(target));
   });
