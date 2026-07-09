@@ -10,7 +10,7 @@ if [[ ! -f "$REPO_ROOT/LICENSE" && -f "$ROOT/LICENSE" ]]; then
 fi
 
 cd "$ROOT"
-"$ROOT/scripts/generate-placeholder-icon.py" >/dev/null
+"$ROOT/scripts/generate-app-icon.py" >/dev/null
 
 "$PYTHON_BIN" - "$ROOT" "$REPO_ROOT" <<'PY'
 from __future__ import annotations

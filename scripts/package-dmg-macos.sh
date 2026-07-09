@@ -6,7 +6,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 cd "$ROOT/app-scaffold"
-"$ROOT/scripts/generate-placeholder-icon.py" >/dev/null
+"$ROOT/scripts/generate-app-icon.py" >/dev/null
 "$ROOT/scripts/release-signing-preflight-macos.sh"
 npm ci
 echo "Signing/notarization environment:"
