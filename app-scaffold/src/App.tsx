@@ -612,6 +612,17 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       ? `Validate and run all ${allComparableTargetIds.length} comparable local/priced cloud targets${skippedUnpricedCloudTargetIds.length ? `; skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}` : ''}`
       : 'Add more comparable local or priced cloud targets before comparing all models';
   const reliabilityComparisonDisabled = busy || activeRunInProgress || !comparisonReady || comparisonNeedsPricing || !hasReliabilityPack;
+  const reliabilityComparisonTitle = activeRunInProgress
+    ? 'A benchmark job is already running'
+    : busy
+      ? 'BenchForge is busy'
+      : !hasReliabilityPack
+        ? 'LLM Reliability pack is not available'
+        : comparisonNeedsPricing
+          ? `Add input/output pricing before running a capped reliability comparison: ${previewList(pricingRepairTargetIds)}`
+          : !comparisonReady
+            ? 'Add one enabled local model target and one enabled priced cloud model target'
+            : `Run ${benchmarkPackLabel('llm-reliability')} with ${recommendedTargetIds.length} recommended local/cloud target(s), 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap`;
   function openLocalRuntimeDetection() {
     openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedComparisonPack, targetIds: setupCloudTargetIds });
     const comparisonNote = setupCloudTargetIds.length ? ` to compare with ${previewList(setupCloudTargetIds)}` : '';
@@ -832,7 +843,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
         <button disabled={primaryBenchmarkActionDisabled} title={primaryBenchmarkActionTitle} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
         <button disabled={compareAllDisabled} title={compareAllTitle} onClick={openAllComparisonRun}><ClipboardCheck size={14} />Compare all</button>
-        <button disabled={reliabilityComparisonDisabled} title={activeRunInProgress ? 'A benchmark job is already running' : undefined} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
+        <button disabled={reliabilityComparisonDisabled} title={reliabilityComparisonTitle} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
         <button disabled={comparisonResultCheck.status !== 'ok'} onClick={() => setPage('results')}><ClipboardCheck size={14} />Results</button>
       </div>
     </div>
