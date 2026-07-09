@@ -4267,6 +4267,10 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const recommendedComparisonConcurrency = Math.min(2, Math.max(1, selectedTargets.length));
   const selectedPackSupportsModelComparison = Boolean(selectedPack?.taskTypes.includes('prompt') && selectedPack.supportedTargetKinds.includes('direct_model'));
   const canApplyLocalCloudPanelShortcut = Boolean(localCloudTargetIds.length && (selectedLocalTargets.length || selectedCloudTargets.length) && !(selectedLocalTargets.length && selectedCloudTargets.length));
+  const canApplyAllComparablePanelShortcut = Boolean(localCloudTargetIds.length
+    && selectedLocalTargets.length
+    && selectedCloudTargets.length
+    && localCloudTargetIds.some(targetId => !selected.includes(targetId)));
   const canOpenLocalSetupFromReadiness = Boolean(selectedCloudTargets.length && !localTargetIds.length);
   const canOpenCloudSetupFromReadiness = Boolean(selectedLocalTargets.length && !cloudTargetIds.length);
   const localCloudPanelShortcutPackId = selectedPackSupportsModelComparison ? selectedPackId : undefined;
@@ -4815,6 +4819,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       {comparisonRunReadiness ? <LocalCloudRunReadinessPanel
         readiness={comparisonRunReadiness}
         onUseLocalCloud={canApplyLocalCloudPanelShortcut ? () => applyTargetShortcut('local/cloud comparison', localCloudTargetIds, localCloudPanelShortcutPackId) : undefined}
+        onUseAllComparable={canApplyAllComparablePanelShortcut ? () => applyTargetShortcut('local/cloud comparison', localCloudTargetIds, localCloudPanelShortcutPackId) : undefined}
         onAddLocalTarget={canOpenLocalSetupFromReadiness ? openLocalSetupFromRunBuilder : undefined}
         onAddCloudTarget={canOpenCloudSetupFromReadiness ? openCloudSetupFromRunBuilder : undefined}
         onSetCostCap={applyRecommendedCostCap}
@@ -4889,6 +4894,7 @@ function PackRunReadiness({ pack, docker }: { pack: BenchmarkPack; docker: boole
 function LocalCloudRunReadinessPanel({
   readiness,
   onUseLocalCloud,
+  onUseAllComparable,
   onAddLocalTarget,
   onAddCloudTarget,
   onSetCostCap,
@@ -4896,12 +4902,13 @@ function LocalCloudRunReadinessPanel({
 }: {
   readiness: LocalCloudRunReadiness;
   onUseLocalCloud?: () => void;
+  onUseAllComparable?: () => void;
   onAddLocalTarget?: () => void;
   onAddCloudTarget?: () => void;
   onSetCostCap?: (value: number) => void;
   onRepairPricing?: (targetIds: string[]) => void;
 }) {
-  const hasActions = Boolean(onUseLocalCloud || onAddLocalTarget || onAddCloudTarget || (readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing));
+  const hasActions = Boolean(onUseLocalCloud || onUseAllComparable || onAddLocalTarget || onAddCloudTarget || (readiness.recommendedCostCapUsd != null && onSetCostCap) || (readiness.pricingRepairTargetIds.length && onRepairPricing));
   return <div className={`preflight-box ${readiness.tone}`}>
     <strong>Comparison Readiness</strong>
     <p>{readiness.headline}</p>
@@ -4909,6 +4916,7 @@ function LocalCloudRunReadinessPanel({
     {readiness.notes.map(note => <p key={note}>{note}</p>)}
     {hasActions ? <div className="row-actions">
       {onUseLocalCloud ? <button onClick={onUseLocalCloud}><ClipboardCheck size={14} />Use local + cloud</button> : null}
+      {onUseAllComparable ? <button onClick={onUseAllComparable}><Boxes size={14} />Use all comparable</button> : null}
       {onAddLocalTarget ? <button onClick={onAddLocalTarget}><Search size={14} />Add local model</button> : null}
       {onAddCloudTarget ? <button onClick={onAddCloudTarget}><Boxes size={14} />Add cloud target</button> : null}
       {readiness.recommendedCostCapUsd != null && onSetCostCap ? <button onClick={() => onSetCostCap(readiness.recommendedCostCapUsd!)}><ShieldCheck size={14} />Set {formatCost(readiness.recommendedCostCapUsd)} cap</button> : null}
