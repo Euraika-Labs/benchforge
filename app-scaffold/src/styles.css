@@ -108,6 +108,7 @@ pre { background: #1c1917; color: #f5f5f4; padding: 14px; border-radius: 8px; ov
 .preflight-box.error { border-color: #fca5a5; background: #fef2f2; }
 .preflight-box p { margin: 6px 0; color: #57534e; }
 .preflight-box ul { margin: 8px 0 0; padding-left: 18px; color: #57534e; }
+.auto-benchmark-preview .panel-head { margin-bottom: 6px; }
 .next-step-box { margin-bottom: 16px; }
 .next-step-box .actions { margin: 10px 0; }
 .next-step-track { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; margin-top: 10px; }

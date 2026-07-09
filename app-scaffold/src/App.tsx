@@ -1643,6 +1643,83 @@ function providerKeyStatus(needsApiKey: boolean, checking: boolean, available: b
   return { label: 'missing', className: 'error', detail: detail || 'paste a key before searching or adding this cloud target' };
 }
 
+function AutomaticBenchmarkPreview({
+  enabled,
+  plannedTarget,
+  intent,
+  targets,
+  packLabel,
+  needsPricing,
+  unpricedCloudTargetIds,
+}: {
+  enabled: boolean;
+  plannedTarget: Target | null;
+  intent: RunBuilderIntent | null;
+  targets: Target[];
+  packLabel: string;
+  needsPricing: boolean;
+  unpricedCloudTargetIds: string[];
+}) {
+  const targetById = new Map(targets.map(target => [target.id, target]));
+  const targetNames = intent?.targetIds.map(id => automaticPreviewTargetLabel(id, plannedTarget, targetById)) ?? [];
+  const unpricedCloudNames = unpricedCloudTargetIds.map(id => automaticPreviewTargetLabel(id, plannedTarget, targetById));
+  const unpricedExistingCloudNames = targets
+    .filter(target => target.id !== plannedTarget?.id && isCloudModelTarget(target) && !targetHasInputOutputPricing(target))
+    .map(target => target.name || target.id);
+  const tone = !enabled ? '' : needsPricing || !plannedTarget ? 'warn' : 'ok';
+  const headline = !enabled
+    ? 'Automatic benchmark off'
+    : !plannedTarget
+      ? 'Choose a model to preview the automatic handoff'
+      : needsPricing
+        ? 'Automatic benchmark waits for pricing'
+        : intent && intent.targetIds.length > 1
+          ? 'Ready to compare after add'
+          : 'Ready to run after add';
+  const detail = !enabled
+    ? 'BenchForge will save and validate the target only.'
+    : !plannedTarget
+      ? 'Enter a model or choose a catalog row; BenchForge will show whether the target can run by itself or compare with an existing counterpart.'
+      : needsPricing
+        ? `Add input/output pricing for ${previewList(unpricedCloudNames)} before BenchForge can queue a capped run automatically.`
+        : automaticBenchmarkPreviewDetail(plannedTarget, intent, unpricedExistingCloudNames);
+  return <div className={`preflight-box auto-benchmark-preview span-two ${tone}`}>
+    <div className="panel-head"><h2>Automatic benchmark</h2><span className={`pill ${tone || 'unknown'}`}>{enabled ? (intent && intent.targetIds.length > 1 ? 'compare' : 'run') : 'off'}</span></div>
+    <p><strong>{headline}</strong></p>
+    <p>{detail}</p>
+    {enabled && intent ? <div className="mini-grid">
+      <span>{packLabel}</span>
+      <span>{targetNames.length ? previewList(targetNames, 4) : '-'}</span>
+      <span>{intent.repetitions ?? 1} rep / {intent.warmupRuns ?? 0} warmup</span>
+      <span>{typeof intent.maxCostUsd === 'number' ? `${formatCost(intent.maxCostUsd)} cap` : 'no cost cap'}</span>
+    </div> : null}
+  </div>;
+}
+
+function automaticPreviewTargetLabel(id: string, plannedTarget: Target | null, targetById: Map<string, Target>) {
+  if (plannedTarget && id === plannedTarget.id) {
+    return `new: ${plannedTarget.name}`;
+  }
+  const target = targetById.get(id);
+  return target?.name || target?.id || id;
+}
+
+function automaticBenchmarkPreviewDetail(plannedTarget: Target, intent: RunBuilderIntent | null, unpricedExistingCloudNames: string[]) {
+  if (intent && intent.targetIds.length > 1) {
+    return 'BenchForge will save the target, validate it, then queue the same benchmark pack across the listed local/cloud targets.';
+  }
+  if (isLocalModelTarget(plannedTarget)) {
+    if (unpricedExistingCloudNames.length) {
+      return `BenchForge will run this local target by itself. Add pricing for ${previewList(unpricedExistingCloudNames)} to make the next add a capped local/cloud comparison.`;
+    }
+    return 'BenchForge will run this local target by itself. Add a priced cloud target when you want automatic local/cloud comparison.';
+  }
+  if (isCloudModelTarget(plannedTarget)) {
+    return 'BenchForge will run this cloud target by itself. Add a local runtime or Hugging Face model when you want automatic local/cloud comparison.';
+  }
+  return 'BenchForge will save, validate, and run this target with the selected benchmark pack.';
+}
+
 function adapterModelPresets(adapter?: Adapter): ModelPreset[] {
   const raw = adapter?.metadata?.model_presets;
   if (!Array.isArray(raw)) {
@@ -3341,6 +3418,28 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
 
   const providerKeyState = providerKeyStatus(needsApiKey, providerKeyStatusBusy, providerKeyAvailable, apiKey, apiKeyEnv, providerKeyDetail);
   const modelTargetActionLabel = modelTargetAddActionLabel();
+  const plannedAutoBenchmarkTarget = plannedModelTargetFromForm();
+  const autoBenchmarkPreviewPackId = autoBenchmarkPackId || connectivityBenchmarkPackId;
+  const autoBenchmarkPreviewUniverse = plannedAutoBenchmarkTarget
+    ? targetListWithOverride(plannedAutoBenchmarkTarget, targets)
+    : targets;
+  const autoBenchmarkPreviewIntent = plannedAutoBenchmarkTarget && autoBenchmarkAfterAdd && !editingTargetId
+    ? automaticModelBenchmarkIntentForTarget(
+        plannedAutoBenchmarkTarget,
+        autoBenchmarkPreviewUniverse,
+        autoBenchmarkPreviewPackId,
+        autoBenchmarkTargetIds,
+      )
+    : null;
+  const autoBenchmarkPreviewNeedsPricing = autoBenchmarkPreviewIntent
+    ? cappedIntentHasUnpricedCloudTarget(autoBenchmarkPreviewIntent, autoBenchmarkPreviewUniverse)
+    : false;
+  const autoBenchmarkPreviewUnpricedCloudIds = autoBenchmarkPreviewIntent
+    ? autoBenchmarkPreviewIntent.targetIds.filter(targetId => {
+        const target = autoBenchmarkPreviewUniverse.find(candidate => candidate.id === targetId);
+        return Boolean(target && isCloudModelTarget(target) && !targetHasInputOutputPricing(target));
+      })
+    : [];
 
   return <section><div className="section-head"><h1>Targets</h1><div className="actions"><button disabled={validating === 'all'} onClick={() => validateAll().catch(error => setMessage(String(error)))}><RefreshCw size={16} />Validate all</button><label className="compact-select">Compare pack <select value={comparisonPackId} onChange={event => setComparisonPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label><button disabled={comparisonActionDisabled} title={comparisonActionDisabled ? 'Add one enabled local model target and one enabled cloud model target' : comparisonNeedsCloudPricing ? 'Add input/output pricing to a cloud target before opening a capped comparison' : `Compare enabled local targets with ${pricedCloudComparisonTargetIds.length} priced cloud target(s)`} onClick={() => openAllLocalCloudComparison().catch(error => setMessage(String(error)))}>{comparisonNeedsCloudPricing ? <Pencil size={16} /> : <ClipboardCheck size={16} />}{comparisonNeedsCloudPricing ? 'Add cloud pricing' : 'Compare local/cloud'}</button><button onClick={() => addMock().catch(error => setMessage(String(error)))}><Plus size={16} />Mock target</button><button onClick={() => addWorkerHarness().catch(error => setMessage(String(error)))}><Plus size={16} />Worker harness</button></div></div>
     <div className="panel compact">
@@ -3374,6 +3473,15 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         </details>
         {!editingTargetId ? <label className="toggle"><input type="checkbox" checked={autoBenchmarkAfterAdd} onChange={event => setAutoBenchmarkAfterAdd(event.target.checked)} />Run benchmark after add</label> : null}
         {!editingTargetId ? <label>Benchmark pack <select value={autoBenchmarkPackId} disabled={!autoBenchmarkAfterAdd} onChange={event => setAutoBenchmarkPackId(event.target.value)}>{modelBenchmarkPacks.map(pack => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label> : null}
+        {!editingTargetId ? <AutomaticBenchmarkPreview
+          enabled={autoBenchmarkAfterAdd}
+          plannedTarget={plannedAutoBenchmarkTarget}
+          intent={autoBenchmarkPreviewIntent}
+          targets={autoBenchmarkPreviewUniverse}
+          packLabel={benchmarkPackLabel(autoBenchmarkPreviewPackId, modelBenchmarkPacks)}
+          needsPricing={autoBenchmarkPreviewNeedsPricing}
+          unpricedCloudTargetIds={autoBenchmarkPreviewUnpricedCloudIds}
+        /> : null}
         <div className="form-actions"><button onClick={() => addModelTarget().catch(error => setMessage(String(error)))}>{editingTargetId ? <Pencil size={16} /> : <Plus size={16} />}{modelTargetActionLabel}</button>{editingTargetId ? <button onClick={() => clearTargetForm()}><RotateCcw size={16} />Cancel</button> : null}</div>
       </div>
       <div className="browser-controls">

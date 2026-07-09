@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    mpsc, Arc, Mutex,
+    mpsc, Arc, Mutex, MutexGuard, OnceLock,
 };
 use std::time::{Duration, Instant};
 
@@ -4384,16 +4384,36 @@ fn run_cli_pack_smoke(benchmark_pack_id: &str, docker: bool) -> Result<(), Strin
     Ok(())
 }
 
+static ENV_VAR_SCOPE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+pub(crate) fn env_var_scope_guard(name: &str) -> Option<MutexGuard<'static, ()>> {
+    if name != CLOUD_CONTRACT_API_KEY_ENV {
+        return None;
+    }
+    Some(
+        ENV_VAR_SCOPE_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+    )
+}
+
 struct ScopedEnvVar {
+    _guard: Option<MutexGuard<'static, ()>>,
     name: &'static str,
     previous: Option<OsString>,
 }
 
 impl ScopedEnvVar {
     fn set(name: &'static str, value: &str) -> Self {
+        let guard = env_var_scope_guard(name);
         let previous = std::env::var_os(name);
         std::env::set_var(name, value);
-        Self { name, previous }
+        Self {
+            _guard: guard,
+            name,
+            previous,
+        }
     }
 }
 

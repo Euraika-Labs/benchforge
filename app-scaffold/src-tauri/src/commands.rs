@@ -16981,21 +16981,32 @@ fn validation_contract_reliability_content(body: &str) -> String {
 }
 
 struct ScopedEnvVar {
+    _guard: Option<std::sync::MutexGuard<'static, ()>>,
     name: &'static str,
     previous: Option<String>,
 }
 
 impl ScopedEnvVar {
     fn set(name: &'static str, value: &str) -> Self {
+        let guard = runner::env_var_scope_guard(name);
         let previous = std::env::var(name).ok();
         std::env::set_var(name, value);
-        Self { name, previous }
+        Self {
+            _guard: guard,
+            name,
+            previous,
+        }
     }
 
     fn remove(name: &'static str) -> Self {
+        let guard = runner::env_var_scope_guard(name);
         let previous = std::env::var(name).ok();
         std::env::remove_var(name);
-        Self { name, previous }
+        Self {
+            _guard: guard,
+            name,
+            previous,
+        }
     }
 }
 
