@@ -1374,6 +1374,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [cloudModelQuery, setCloudModelQuery] = useState('');
   const [cloudModels, setCloudModels] = useState<CloudModel[]>([]);
   const [cloudModelBusy, setCloudModelBusy] = useState(false);
+  const [catalogAddBusyModel, setCatalogAddBusyModel] = useState('');
   const [selectedCloudModel, setSelectedCloudModel] = useState<CloudModel | null>(null);
   const [targetAdvancedOpen, setTargetAdvancedOpen] = useState(false);
   const [providerKeyAvailable, setProviderKeyAvailable] = useState(false);
@@ -1771,6 +1772,203 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setCacheReadPrice(nextModel.cacheReadPriceUsdPerMillionTokens != null ? String(nextModel.cacheReadPriceUsdPerMillionTokens) : '');
     setCacheWritePrice(nextModel.cacheWritePriceUsdPerMillionTokens != null ? String(nextModel.cacheWritePriceUsdPerMillionTokens) : '');
     setMessage(`Selected ${nextModel.model}`);
+  }
+
+  function cloudCatalogTargetName(nextModel: CloudModel) {
+    return targetName.trim() || `${selectedAdapter?.name ?? nextModel.provider} ${nextModel.model}`;
+  }
+
+  function cloudCatalogTargetId(nextModel: CloudModel) {
+    return slugify(`${selectedAdapter?.id ?? nextModel.provider}-${nextModel.model}`);
+  }
+
+  function cloudCatalogPricingTarget(nextModel: CloudModel) {
+    return {
+      inputPriceUsdPerMillionTokens: nextModel.inputPriceUsdPerMillionTokens ?? undefined,
+      outputPriceUsdPerMillionTokens: nextModel.outputPriceUsdPerMillionTokens ?? undefined,
+      cacheReadPriceUsdPerMillionTokens: nextModel.cacheReadPriceUsdPerMillionTokens ?? undefined,
+      cacheWritePriceUsdPerMillionTokens: nextModel.cacheWritePriceUsdPerMillionTokens ?? undefined,
+    };
+  }
+
+  function cloudCatalogPlannedTarget(nextModel: CloudModel): Target | null {
+    if (!selectedAdapter) {
+      return null;
+    }
+    return plannedModelTarget(
+      cloudCatalogTargetId(nextModel),
+      cloudCatalogTargetName(nextModel),
+      selectedAdapter.id,
+      baseUrl,
+      cloudCatalogPricingTarget(nextModel),
+    );
+  }
+
+  function cloudCatalogBenchmarkIntent(nextModel: CloudModel) {
+    const plannedTarget = cloudCatalogPlannedTarget(nextModel);
+    if (!plannedTarget) {
+      return null;
+    }
+    const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
+    const targetUniverse = targetListWithOverride(plannedTarget, targets);
+    return automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
+  }
+
+  function cloudCatalogActionLabel(nextModel: CloudModel) {
+    if (!autoBenchmarkAfterAdd) {
+      return 'Add target';
+    }
+    const intent = cloudCatalogBenchmarkIntent(nextModel);
+    return intent && intent.targetIds.length > 1 ? 'Add + compare' : 'Add + run';
+  }
+
+  async function addCloudModelFromCatalog(nextModel: CloudModel) {
+    if (!selectedAdapter) {
+      setMessage('Select an adapter first');
+      return;
+    }
+    if (editingTargetId) {
+      setMessage('Finish or cancel the current target edit before adding a catalog model.');
+      return;
+    }
+    const busyId = `${nextModel.source}:${nextModel.model}`;
+    setCatalogAddBusyModel(busyId);
+    useCloudModel(nextModel);
+    try {
+      const keychainId = providerKeychainId(selectedAdapter, baseUrl);
+      if (apiKeyEnv.trim() && !isValidEnvName(apiKeyEnv.trim())) {
+        setMessage('API key env var must be a valid environment variable name, for example OPENAI_API_KEY.');
+        return;
+      }
+      if (!(await ensureModelTargetHasRequiredKey(selectedAdapter, keychainId, false, false))) {
+        return;
+      }
+      if (apiKey.trim()) {
+        await saveProviderApiKey(keychainId, apiKey);
+        setApiKey('');
+        await refreshSelectedProviderKeyStatus(selectedAdapter);
+      }
+      const parsedTemperature = parseOptionalNumberInRange(temperature, 'Temperature', 0, 2);
+      const parsedTopP = parseOptionalNumberInRange(topP, 'Top P', 0, 1);
+      const parsedMaxTokens = parseOptionalPositiveInteger(maxTokens, 'Max tokens');
+      const parsedSeed = parseOptionalInteger(seed, 'Seed');
+      const parsedTimeout = parseOptionalPositiveInteger(timeoutSeconds, 'Timeout');
+      const parsedRetryCount = parseOptionalIntegerInRange(retryCount, 'Retries', 0, 5);
+      const validationError = parsedTemperature.error
+        || parsedTopP.error
+        || parsedMaxTokens.error
+        || parsedSeed.error
+        || parsedTimeout.error
+        || parsedRetryCount.error;
+      if (validationError) {
+        setMessage(validationError);
+        return;
+      }
+      const hasInputPrice = nextModel.inputPriceUsdPerMillionTokens != null;
+      const hasOutputPrice = nextModel.outputPriceUsdPerMillionTokens != null;
+      if (hasInputPrice !== hasOutputPrice) {
+        setMessage(`Catalog pricing for ${nextModel.model} is incomplete. Use the row first, review pricing, then add the target.`);
+        return;
+      }
+      if ((nextModel.cacheReadPriceUsdPerMillionTokens != null || nextModel.cacheWritePriceUsdPerMillionTokens != null)
+        && (!hasInputPrice || !hasOutputPrice)) {
+        setMessage(`Catalog cache pricing for ${nextModel.model} needs input and output prices. Use the row first, review pricing, then add the target.`);
+        return;
+      }
+      const config: Record<string, unknown> = {
+        model: nextModel.model,
+        api_key_keychain: keychainId,
+        pricing_preset: nextModel.name || nextModel.model,
+        pricing_source: nextModel.sourceUrl || nextModel.source,
+        pricing_provider: nextModel.provider,
+      };
+      if (apiKeyEnv.trim()) {
+        config.api_key_env = apiKeyEnv.trim();
+      }
+      if (baseUrl.trim()) {
+        config.base_url = baseUrl.trim();
+      }
+      if (nextModel.inputPriceUsdPerMillionTokens != null) {
+        config.input_price_usd_per_million_tokens = nextModel.inputPriceUsdPerMillionTokens;
+      }
+      if (nextModel.outputPriceUsdPerMillionTokens != null) {
+        config.output_price_usd_per_million_tokens = nextModel.outputPriceUsdPerMillionTokens;
+      }
+      if (nextModel.cacheReadPriceUsdPerMillionTokens != null) {
+        config.cache_read_price_usd_per_million_tokens = nextModel.cacheReadPriceUsdPerMillionTokens;
+      }
+      if (nextModel.cacheWritePriceUsdPerMillionTokens != null) {
+        config.cache_write_price_usd_per_million_tokens = nextModel.cacheWritePriceUsdPerMillionTokens;
+      }
+      if (nextModel.contextLength != null) {
+        config.context_length = nextModel.contextLength;
+      }
+      if (nextModel.detail) {
+        config.pricing_note = nextModel.detail;
+      }
+      if (parsedTemperature.value != null) {
+        config.temperature = parsedTemperature.value;
+      }
+      if (parsedTopP.value != null) {
+        config.top_p = parsedTopP.value;
+      }
+      if (parsedMaxTokens.value != null) {
+        config.max_tokens = parsedMaxTokens.value;
+      }
+      if (parsedSeed.value != null) {
+        config.seed = parsedSeed.value;
+      }
+      if (parsedTimeout.value != null) {
+        config.timeout_seconds = parsedTimeout.value;
+      }
+      if (parsedRetryCount.value != null) {
+        config.retry_count = parsedRetryCount.value;
+      }
+      const name = cloudCatalogTargetName(nextModel);
+      const id = cloudCatalogTargetId(nextModel);
+      const targetRequest = { id, name, kind: 'direct_model', adapterId: selectedAdapter.id, config };
+      const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
+      const plannedTarget = plannedModelTarget(id, name, selectedAdapter.id, baseUrl, cloudCatalogPricingTarget(nextModel));
+      const targetUniverse = targetListWithOverride(plannedTarget, targets);
+      const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
+      const autoBenchmarkNeedsPricing = autoBenchmarkAfterAdd
+        && cappedIntentHasUnpricedCloudTarget(benchmarkIntent, targetUniverse);
+      setMessage(`Adding ${nextModel.model} and validating target`);
+      const handoff = await createTargetWithBenchmarkHandoff(
+        targetRequest,
+        autoBenchmarkAfterAdd && !autoBenchmarkNeedsPricing
+          ? {
+              benchmarkPackId: packId,
+              benchmarkTargetIds: benchmarkIntent.targetIds,
+              repetitions: benchmarkIntent.repetitions,
+              warmupRuns: benchmarkIntent.warmupRuns,
+              concurrency: benchmarkIntent.concurrency,
+              maxCostUsd: benchmarkIntent.maxCostUsd,
+            }
+          : {},
+      );
+      setValidations(current => {
+        const next = { ...current };
+        if (handoff.validation) {
+          next[id] = handoff.validation;
+        } else {
+          delete next[id];
+        }
+        return next;
+      });
+      await finishModelTargetHandoff(
+        handoff.target,
+        handoff.validation ?? null,
+        name,
+        false,
+        handoff.runJob ?? null,
+        handoff.benchmarkError ?? null,
+        false,
+        { pendingAutoBenchmarkPackId: autoBenchmarkNeedsPricing ? packId : '' },
+      );
+    } finally {
+      setCatalogAddBusyModel('');
+    }
   }
 
   function clearTargetForm(options: { preserveAutoBenchmarkScope?: boolean } = {}) {
@@ -2683,7 +2881,10 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
           </div>
           {item.detail ? <span className="muted">{item.detail}</span> : null}
         </div>
-        <div className="model-actions"><button onClick={() => useCloudModel(item)}><Plus size={16} />Use</button></div>
+        <div className="model-actions">
+          <button disabled={Boolean(catalogAddBusyModel) || Boolean(editingTargetId)} title={editingTargetId ? 'Finish or cancel the current edit before adding a catalog model' : 'Save, validate, and use the current automatic benchmark setting'} onClick={() => addCloudModelFromCatalog(item).catch(error => setMessage(String(error)))}><ClipboardCheck size={16} />{catalogAddBusyModel === `${item.source}:${item.model}` ? 'Adding' : cloudCatalogActionLabel(item)}</button>
+          <button disabled={Boolean(catalogAddBusyModel)} onClick={() => useCloudModel(item)}><Plus size={16} />Use</button>
+        </div>
       </div>)}</div> : null}
       <p className="muted">Cloud keys are saved to macOS Keychain. Generation settings and optional pricing are stored with the target for reproducible comparisons.</p>
       {selectedModelPreset?.note ? <p className="muted">{selectedModelPreset.note}</p> : null}
