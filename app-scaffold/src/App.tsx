@@ -4430,6 +4430,10 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const costLimitMessage = runCostLimitMessage(runEstimate, parsedMaxCostUsd.value);
   const blockingEstimateError = blockingRunEstimateErrorMessage(estimateError);
   const runSettingsError = parsedRepetitions.error || parsedWarmupRuns.error || parsedConcurrency.error || parsedMaxCostUsd.error || compatibilityError || unavailableTargetError || taskSelectionError || costLimitMessage || blockingEstimateError;
+  const runCostPricingRepairTargetIds = costLimitMessage && runEstimate?.unpricedTargets.length
+    ? runEstimate.unpricedTargets
+    : [];
+  const canAdjustRunCostCap = Boolean(costLimitMessage && !runCostPricingRepairTargetIds.length);
   const estimatedRuns = selected.length * Math.max(1, parsedRepetitions.value ?? 1) * selectedTaskCount;
   const estimatedWarmups = selected.length * (parsedWarmupRuns.value ?? 0);
   const comparisonRunReadiness = selectedPack && (selectedLocalTargets.length || selectedCloudTargets.length)
@@ -5036,7 +5040,13 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       {runValidationBlockers.length ? <RunValidationBlockerPanel blockers={runValidationBlockers} targets={targets} onRepair={repairRunValidationBlocker} /> : null}
       {repetitionConfidenceWarning ? <div className="preflight-box warn"><strong>Repetition Confidence</strong><p>{repetitionConfidenceWarning}</p>{comparisonDefaultsRecommended ? <div className="row-actions"><button onClick={applyRecommendedComparisonDefaults}><ShieldCheck size={14} />Use 3 reps + warmup</button></div> : null}</div> : null}
       {runScaleWarning ? <div className="preflight-box warn"><strong>Large Run</strong><p>{runScaleWarning}</p></div> : null}
-      {runSettingsError ? <p className="muted">{runSettingsError}</p> : <RunEstimatePanel estimate={runEstimate} error={estimateError} fallbackRuns={estimatedRuns} fallbackWarmups={estimatedWarmups} selectedTargets={selected.length} packTasks={selectedTaskCount} repetitions={parsedRepetitions.value ?? 1} concurrency={parsedConcurrency.value ?? 1} maxCostUsd={parsedMaxCostUsd.value} />}
+      {runSettingsError ? <RunSettingsBlockerPanel
+        message={runSettingsError}
+        pricingRepairTargetIds={runCostPricingRepairTargetIds}
+        canAdjustCostCap={canAdjustRunCostCap}
+        onRepairPricing={repairRunPricingBlockers}
+        onAdjustCostCap={() => setRunAdvancedOpen(true)}
+      /> : <RunEstimatePanel estimate={runEstimate} error={estimateError} fallbackRuns={estimatedRuns} fallbackWarmups={estimatedWarmups} selectedTargets={selected.length} packTasks={selectedTaskCount} repetitions={parsedRepetitions.value ?? 1} concurrency={parsedConcurrency.value ?? 1} maxCostUsd={parsedMaxCostUsd.value} />}
       <div className="row-actions target-shortcuts">
         <button disabled={!modelTargetIds.length} title={allModelsShortcutTitle} onClick={() => applyTargetShortcut('model', modelTargetIds)}><Boxes size={14} />All models</button>
         <button disabled={!localTargetIds.length} title={localTargetIds.length ? 'Select all enabled local model targets' : 'Add one enabled local model target'} onClick={() => applyTargetShortcut('local', localTargetIds)}><TerminalSquare size={14} />Local</button>
@@ -5223,6 +5233,30 @@ function RunValidationBlockerPanel({ blockers, targets, onRepair }: { blockers: 
         </tr>;
       })}
     </tbody></table>
+  </div>;
+}
+
+function RunSettingsBlockerPanel({
+  message,
+  pricingRepairTargetIds,
+  canAdjustCostCap,
+  onRepairPricing,
+  onAdjustCostCap,
+}: {
+  message: string;
+  pricingRepairTargetIds: string[];
+  canAdjustCostCap: boolean;
+  onRepairPricing: (targetIds: string[]) => void;
+  onAdjustCostCap: () => void;
+}) {
+  const hasActions = Boolean(pricingRepairTargetIds.length || canAdjustCostCap);
+  return <div className="preflight-box warn">
+    <strong>Run Blocked</strong>
+    <p>{message}</p>
+    {hasActions ? <div className="row-actions">
+      {pricingRepairTargetIds.length ? <button title={errorCategoryRepairHint('pricing_assumption')} onClick={() => onRepairPricing(pricingRepairTargetIds)}><Pencil size={14} />Add pricing</button> : null}
+      {canAdjustCostCap ? <button onClick={onAdjustCostCap}><SlidersHorizontal size={14} />Adjust cap</button> : null}
+    </div> : null}
   </div>;
 }
 
