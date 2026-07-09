@@ -2905,6 +2905,9 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       return 'Add target';
     }
     const intent = localRuntimeBenchmarkIntent(runtime, model);
+    if (intent && cappedIntentHasUnpricedCloudTarget(intent, targetListWithOverride(localRuntimePlannedTarget(runtime, model), targets))) {
+      return 'Add + price';
+    }
     return intent && intent.targetIds.length > 1 ? 'Add + compare' : 'Add + run';
   }
 
@@ -3756,6 +3759,11 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
         const runtimePreviewUnpricedCloudIds = runtimePreviewIntent
           ? unpricedCloudTargetIdsForIntent(runtimePreviewIntent, runtimePreviewUniverse)
           : [];
+        const runtimeActionTitle = !runtimeCanAdd
+          ? 'Start the local runtime and select a model before adding it'
+          : runtimePreviewNeedsPricing
+            ? 'Save and validate this local target, then add cloud pricing before the capped comparison can run'
+            : 'Save, validate, and use the current automatic benchmark setting';
         return <tr key={runtime.id}><td>{runtime.name}</td><td>{runtime.baseUrl}</td><td><span className={`pill ${runtime.status === 'ok' ? 'ok' : runtime.status === 'error' ? 'error' : 'warn'}`}>{runtime.status}</span> {runtime.detail}
           {runtime.modelSource ? <div className="tag-row"><span className="mini-tag" title={runtime.probeUrl ?? undefined}>{runtime.modelSource}</span></div> : null}
           {runtime.setupHint ? <div className="muted">{runtime.setupHint}</div> : null}
@@ -3769,7 +3777,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
             {runtime.id === 'ollama' ? <button disabled={Boolean(runtimeToolBusy) || !selectedModel.trim()} onClick={() => runSelectedLocalRuntimeTool(runtime, 'pull', selectedModel.trim()).catch(error => setMessage(String(error)))}><Download size={14} />{runtimeToolBusy === `${runtime.id}:pull` ? 'Pulling' : 'Pull model'}</button> : null}
           </div> : null}
           {runtimeResult ? <div><div className="tag-row"><span className={`pill ${runtimeResult.status === 'ready' ? 'ok' : runtimeResult.status === 'error' ? 'error' : 'warn'}`}>{runtimeResult.status}</span><span className="mini-tag">{runtimeResult.action}</span></div><pre className="setup-log">{runtimeResult.log}</pre></div> : null}
-        </td><td>{runtime.models.length ? <select value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))}>{runtime.models.map(modelName => <option key={modelName} value={modelName}>{modelName}</option>)}</select> : <input value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))} placeholder={runtime.modelHint ?? 'model id'} />}</td><td><button disabled={Boolean(addingLocalRuntimeId) || !runtimeCanAdd} title={runtimeCanAdd ? 'Save, validate, and use the current automatic benchmark setting' : 'Start the local runtime and select a model before adding it'} onClick={() => addDetectedRuntime(runtime, selectedModel).catch(error => setMessage(String(error)))}><ClipboardCheck size={16} />{addingLocalRuntimeId === runtime.id ? 'Adding' : localRuntimeActionLabel(runtime, selectedModel)}</button><AutomaticBenchmarkInlinePreview
+        </td><td>{runtime.models.length ? <select value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))}>{runtime.models.map(modelName => <option key={modelName} value={modelName}>{modelName}</option>)}</select> : <input value={selectedModel} onChange={event => setLocalSelections(current => ({ ...current, [runtime.id]: event.target.value }))} placeholder={runtime.modelHint ?? 'model id'} />}</td><td><button disabled={Boolean(addingLocalRuntimeId) || !runtimeCanAdd} title={runtimeActionTitle} onClick={() => addDetectedRuntime(runtime, selectedModel).catch(error => setMessage(String(error)))}>{runtimePreviewNeedsPricing ? <Pencil size={16} /> : <ClipboardCheck size={16} />}{addingLocalRuntimeId === runtime.id ? 'Adding' : localRuntimeActionLabel(runtime, selectedModel)}</button><AutomaticBenchmarkInlinePreview
           enabled={autoBenchmarkAfterAdd}
           plannedTarget={runtimePlannedTarget}
           intent={runtimePreviewIntent}
