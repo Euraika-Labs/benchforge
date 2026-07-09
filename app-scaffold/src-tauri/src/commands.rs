@@ -24,7 +24,7 @@ const HF_LOCAL_DEFAULT_PORT: u16 = 8080;
 const HF_LOCAL_DEFAULT_CONTEXT: u32 = 2048;
 const HF_CONNECTIVITY_MAX_COST_USD: f64 = 0.05;
 const HF_QUALITY_MAX_COST_USD: f64 = 1.0;
-const LIVE_CLOUD_PACK_ID: &str = "llm-connectivity";
+const LIVE_CLOUD_DEFAULT_PACK_ID: &str = "llm-connectivity";
 const LIVE_CLOUD_DEFAULT_MAX_COST_USD: f64 = 0.10;
 
 #[derive(Serialize)]
@@ -14184,18 +14184,22 @@ pub fn run_cli_cloud_provider_job_smoke() -> Result<serde_json::Value, String> {
 }
 
 pub fn run_cli_live_cloud_smoke() -> Result<serde_json::Value, String> {
+    let env_get = |name: &str| std::env::var(name).ok();
     let run_benchmark = env_flag("BENCHFORGE_LIVE_CLOUD_RUN");
-    let max_cost_usd = live_cloud_max_cost_usd(&|name| std::env::var(name).ok())?;
+    let (benchmark_pack_id, benchmark_tasks) = live_cloud_benchmark_pack(&env_get)?;
+    let max_cost_usd = live_cloud_max_cost_usd(&env_get)?;
     let provider_filter = live_cloud_provider_filter();
+    let target_max_tokens = live_cloud_target_max_tokens(&benchmark_pack_id, &benchmark_tasks);
     let plan = live_cloud_target_plan(
         provider_filter.as_ref(),
-        &|name| std::env::var(name).ok(),
+        &env_get,
         &|adapter_id| provider_api_key_available(adapter_id),
+        target_max_tokens,
     )?;
     if plan.targets.is_empty() {
         return Ok(serde_json::json!({
             "status": "skipped",
-            "benchmarkPackId": LIVE_CLOUD_PACK_ID,
+            "benchmarkPackId": benchmark_pack_id,
             "runRequested": run_benchmark,
             "message": live_cloud_no_targets_message(&plan.skipped),
             "skipped": plan.skipped
@@ -14226,7 +14230,11 @@ pub fn run_cli_live_cloud_smoke() -> Result<serde_json::Value, String> {
             run_error =
                 Some("No live cloud target validated successfully; benchmark run skipped.".into());
         } else {
-            let planned = live_cloud_benchmark_target_ids_for_cap(&conn, &valid_target_ids)?;
+            let planned = live_cloud_benchmark_target_ids_for_cap(
+                &conn,
+                &valid_target_ids,
+                &benchmark_pack_id,
+            )?;
             benchmark_target_ids = planned.0;
             benchmark_skipped_targets = planned.1;
             if benchmark_target_ids.is_empty() {
@@ -14235,8 +14243,11 @@ pub fn run_cli_live_cloud_smoke() -> Result<serde_json::Value, String> {
                         .into(),
                 );
             } else {
-                let request =
-                    live_cloud_benchmark_request(benchmark_target_ids.clone(), max_cost_usd);
+                let request = live_cloud_benchmark_request(
+                    benchmark_target_ids.clone(),
+                    &benchmark_pack_id,
+                    max_cost_usd,
+                );
                 if let Err(err) = enforce_run_cost_limit(&conn, &request) {
                     run_error = Some(err);
                 } else {
@@ -14253,9 +14264,10 @@ pub fn run_cli_live_cloud_smoke() -> Result<serde_json::Value, String> {
     );
     Ok(serde_json::json!({
         "status": status,
-        "benchmarkPackId": LIVE_CLOUD_PACK_ID,
+        "benchmarkPackId": benchmark_pack_id,
         "runRequested": run_benchmark,
         "maxCostUsd": max_cost_usd,
+        "targetMaxTokens": target_max_tokens,
         "targetIds": plan.targets.iter().map(|target| target.id.clone()).collect::<Vec<_>>(),
         "validatedTargetIds": valid_target_ids,
         "benchmarkTargetIds": benchmark_target_ids,
@@ -14266,7 +14278,8 @@ pub fn run_cli_live_cloud_smoke() -> Result<serde_json::Value, String> {
         "skipped": plan.skipped,
         "notes": [
             "Validation uses real provider endpoints and may spend a tiny completion probe.",
-            "Set BENCHFORGE_LIVE_CLOUD_RUN=1 to run the llm-connectivity pack after successful validation.",
+            "Set BENCHFORGE_LIVE_CLOUD_RUN=1 to run the selected benchmark pack after successful validation.",
+            "Set BENCHFORGE_LIVE_CLOUD_PACK=llm-basics, llm-core, llm-reliability, or another prompt-only direct-model pack to test the same benchmark against real providers.",
             "Set BENCHFORGE_LIVE_CLOUD_PROVIDERS to a comma-separated subset such as openai,anthropic,openrouter,mistral,azure-openai,gemini."
         ]
     }))
@@ -14334,13 +14347,55 @@ fn live_cloud_max_cost_usd(env_get: &dyn Fn(&str) -> Option<String>) -> Result<f
     Ok(value)
 }
 
+fn live_cloud_benchmark_pack(
+    env_get: &dyn Fn(&str) -> Option<String>,
+) -> Result<(String, Vec<runner::TaskSpec>), String> {
+    let pack_id = live_cloud_benchmark_pack_id(env_get);
+    let pack = runner::load_pack(&pack_id).map_err(|err| {
+        format!(
+            "live_cloud_pack_invalid: BENCHFORGE_LIVE_CLOUD_PACK={} is not loadable: {}",
+            pack_id, err
+        )
+    })?;
+    let tasks = runner::load_tasks(&pack).map_err(|err| {
+        format!(
+            "live_cloud_pack_invalid: BENCHFORGE_LIVE_CLOUD_PACK={} has invalid tasks: {}",
+            pack_id, err
+        )
+    })?;
+    if let Some(task) = tasks.iter().find(|task| task.task_type != "prompt") {
+        return Err(format!(
+            "live_cloud_pack_invalid: BENCHFORGE_LIVE_CLOUD_PACK={} must be prompt-only for direct cloud providers; task {} is {}",
+            pack_id, task.id, task.task_type
+        ));
+    }
+    Ok((pack.id, tasks))
+}
+
+fn live_cloud_benchmark_pack_id(env_get: &dyn Fn(&str) -> Option<String>) -> String {
+    env_get("BENCHFORGE_LIVE_CLOUD_PACK")
+        .or_else(|| env_get("BENCHFORGE_LIVE_CLOUD_PACK_ID"))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| LIVE_CLOUD_DEFAULT_PACK_ID.into())
+}
+
+fn live_cloud_target_max_tokens(pack_id: &str, tasks: &[runner::TaskSpec]) -> u64 {
+    if pack_id == LIVE_CLOUD_DEFAULT_PACK_ID {
+        32
+    } else {
+        default_max_tokens_for_tasks(tasks)
+    }
+}
+
 fn live_cloud_benchmark_request(
     target_ids: Vec<String>,
+    benchmark_pack_id: &str,
     max_cost_usd: f64,
 ) -> runner::RunQuickSmokeRequest {
     runner::RunQuickSmokeRequest {
         target_ids,
-        benchmark_pack_id: LIVE_CLOUD_PACK_ID.into(),
+        benchmark_pack_id: benchmark_pack_id.into(),
         task_ids: vec![],
         repetitions: 1,
         docker: false,
@@ -14354,12 +14409,13 @@ fn live_cloud_benchmark_request(
 fn live_cloud_benchmark_target_ids_for_cap(
     conn: &rusqlite::Connection,
     valid_target_ids: &[String],
+    benchmark_pack_id: &str,
 ) -> Result<(Vec<String>, Vec<serde_json::Value>), String> {
     let estimate = estimate_run_plan_for_conn(
         conn,
         &RunEstimateRequest {
             target_ids: valid_target_ids.to_vec(),
-            benchmark_pack_id: LIVE_CLOUD_PACK_ID.into(),
+            benchmark_pack_id: benchmark_pack_id.into(),
             task_ids: vec![],
             repetitions: 1,
             warmup_runs: 0,
@@ -14390,6 +14446,7 @@ fn live_cloud_target_plan(
     provider_filter: Option<&BTreeSet<String>>,
     env_get: &dyn Fn(&str) -> Option<String>,
     key_available: &dyn Fn(&str) -> bool,
+    target_max_tokens: u64,
 ) -> Result<LiveCloudTargetPlan, String> {
     let mut targets = Vec::new();
     let mut skipped = Vec::new();
@@ -14492,7 +14549,7 @@ fn live_cloud_target_plan(
             "api_key_keychain": spec.adapter_id,
             "temperature": 0,
             "top_p": 1,
-            "max_tokens": 32,
+            "max_tokens": target_max_tokens,
             "timeout_seconds": 60,
             "retry_count": 0,
             "source": "live-cloud-smoke"
@@ -22778,7 +22835,7 @@ mod tests {
     #[test]
     fn live_cloud_plan_skips_provider_without_key() {
         let filter = BTreeSet::from(["openai".to_string()]);
-        let plan = live_cloud_target_plan(Some(&filter), &|_| None, &|_| false)
+        let plan = live_cloud_target_plan(Some(&filter), &|_| None, &|_| false, 32)
             .expect("plan should build");
 
         assert!(plan.targets.is_empty());
@@ -22790,9 +22847,12 @@ mod tests {
     #[test]
     fn live_cloud_plan_reports_unknown_provider_filter_without_blocking_known_provider() {
         let filter = BTreeSet::from(["bogus-ai".to_string(), "openai".to_string()]);
-        let plan = live_cloud_target_plan(Some(&filter), &|_| None, &|adapter_id| {
-            adapter_id == "openai"
-        })
+        let plan = live_cloud_target_plan(
+            Some(&filter),
+            &|_| None,
+            &|adapter_id| adapter_id == "openai",
+            32,
+        )
         .expect("plan should build");
 
         assert_eq!(plan.targets.len(), 1);
@@ -22814,6 +22874,7 @@ mod tests {
                 _ => None,
             },
             &|adapter_id| adapter_id == "openai",
+            512,
         )
         .expect("plan should build");
 
@@ -22824,7 +22885,7 @@ mod tests {
         assert_eq!(target.config["model"], "gpt-4.1-mini");
         assert_eq!(target.config["api_key_keychain"], "openai");
         assert_eq!(target.config["api_key_env"], "OPENAI_API_KEY");
-        assert_eq!(target.config["max_tokens"], 32);
+        assert_eq!(target.config["max_tokens"], 512);
         assert_eq!(target.config["input_price_usd_per_million_tokens"], 0.4);
         assert_eq!(target.config["output_price_usd_per_million_tokens"], 1.6);
         assert!(!target.config.to_string().contains("sk-"));
@@ -22915,6 +22976,7 @@ mod tests {
                 _ => None,
             },
             &|adapter_id| adapter_id == "openai",
+            32,
         )
         .expect_err("invalid pricing override should stop target planning");
 
@@ -22925,9 +22987,12 @@ mod tests {
     #[test]
     fn live_cloud_plan_builds_gemini_target_without_secret_value() {
         let filter = BTreeSet::from(["gemini".to_string()]);
-        let plan = live_cloud_target_plan(Some(&filter), &|_| None, &|adapter_id| {
-            adapter_id == "gemini"
-        })
+        let plan = live_cloud_target_plan(
+            Some(&filter),
+            &|_| None,
+            &|adapter_id| adapter_id == "gemini",
+            32,
+        )
         .expect("plan should build");
 
         assert_eq!(plan.targets.len(), 1);
@@ -22983,6 +23048,7 @@ mod tests {
         let (run_target_ids, skipped) = live_cloud_benchmark_target_ids_for_cap(
             &conn,
             &["priced-live".into(), "unpriced-live".into()],
+            LIVE_CLOUD_DEFAULT_PACK_ID,
         )
         .expect("live cloud target partition should work");
 
@@ -22990,6 +23056,57 @@ mod tests {
         assert_eq!(skipped.len(), 1);
         assert_eq!(skipped[0]["targetId"], "unpriced-live");
         assert_eq!(skipped[0]["reason"], "missing_pricing");
+    }
+
+    #[test]
+    fn live_cloud_benchmark_pack_defaults_to_connectivity_budget() {
+        let (pack_id, tasks) =
+            live_cloud_benchmark_pack(&|_| None).expect("default live cloud pack should load");
+
+        assert_eq!(pack_id, LIVE_CLOUD_DEFAULT_PACK_ID);
+        assert!(tasks.iter().all(|task| task.task_type == "prompt"));
+        assert_eq!(live_cloud_target_max_tokens(&pack_id, &tasks), 32);
+    }
+
+    #[test]
+    fn live_cloud_benchmark_pack_env_selects_prompt_comparison_pack() {
+        let (pack_id, tasks) = live_cloud_benchmark_pack(&|name| match name {
+            "BENCHFORGE_LIVE_CLOUD_PACK" => Some(" llm-basics ".into()),
+            _ => None,
+        })
+        .expect("configured live cloud pack should load");
+
+        assert_eq!(pack_id, "llm-basics");
+        assert!(tasks.len() >= 3);
+        assert!(tasks.iter().all(|task| task.task_type == "prompt"));
+        assert_eq!(
+            live_cloud_target_max_tokens(&pack_id, &tasks),
+            PROMPT_DEFAULT_MAX_TOKENS
+        );
+    }
+
+    #[test]
+    fn live_cloud_benchmark_pack_rejects_non_prompt_packs() {
+        let err = live_cloud_benchmark_pack(&|name| match name {
+            "BENCHFORGE_LIVE_CLOUD_PACK" => Some("quick-smoke".into()),
+            _ => None,
+        })
+        .expect_err("non-prompt live cloud pack should be rejected");
+
+        assert!(err.starts_with("live_cloud_pack_invalid"), "{err}");
+        assert!(err.contains("quick-smoke"), "{err}");
+        assert!(err.contains("prompt-only"), "{err}");
+    }
+
+    #[test]
+    fn live_cloud_benchmark_request_uses_selected_pack() {
+        let request = live_cloud_benchmark_request(vec!["live-openai".into()], "llm-basics", 0.25);
+
+        assert_eq!(request.benchmark_pack_id, "llm-basics");
+        assert_eq!(request.target_ids, vec!["live-openai"]);
+        assert_eq!(request.max_cost_usd, Some(0.25));
+        assert_eq!(request.repetitions, 1);
+        assert_eq!(request.warmup_runs, 0);
     }
 
     #[test]

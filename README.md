@@ -277,7 +277,10 @@ Live provider probes are outside the default readiness gate and skip cleanly whe
 ```bash
 BENCHFORGE_LIVE_CLOUD_PROVIDERS=openai,anthropic,openrouter,gemini make live-cloud-smoke
 BENCHFORGE_LIVE_CLOUD_RUN=1 make live-cloud-smoke
+BENCHFORGE_LIVE_CLOUD_RUN=1 BENCHFORGE_LIVE_CLOUD_PACK=llm-basics make live-cloud-smoke
 ```
+
+By default the live benchmark run uses `llm-connectivity` with a low token budget. Set `BENCHFORGE_LIVE_CLOUD_PACK` to a prompt-only pack such as `llm-basics`, `llm-core`, or `llm-reliability` when you want real providers to run the same comparison pack you use in the app.
 
 ## Run CLI Agent Benchmarks
 
