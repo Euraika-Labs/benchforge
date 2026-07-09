@@ -652,10 +652,22 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
           : !comparisonReady
             ? 'Add one enabled local model target and one enabled priced cloud model target'
             : `Run ${benchmarkPackLabel('llm-reliability')} with ${primaryComparisonTargetIds.length} comparable local/cloud target(s), 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap`;
+  const localSetupPrefersRuntimeDetection = localRuntimeCheck.check.status === 'ok';
+  const localSetupLabel = localSetupPrefersRuntimeDetection ? 'Detect runtime' : 'Local setup';
+  const localSetupTitle = localSetupPrefersRuntimeDetection
+    ? 'Doctor found a reachable local runtime endpoint; detect its models and add it to the next benchmark'
+    : 'Open the managed Hugging Face GGUF workflow to search, download, start, and benchmark a local model';
   function openLocalRuntimeDetection() {
     openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedComparisonPack, targetIds: setupCloudTargetIds });
     const comparisonNote = setupCloudTargetIds.length ? ` to compare with ${previewList(setupCloudTargetIds)}` : '';
     setMessage(`Detecting local runtimes from Dashboard${comparisonNote}`);
+  }
+  function openSmartLocalSetup() {
+    if (localSetupPrefersRuntimeDetection) {
+      openLocalRuntimeDetection();
+      return;
+    }
+    openHuggingFaceLocalModelSetup();
   }
   function openCloudTargetSetup() {
     openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedComparisonPack, targetIds: setupLocalTargetIds });
@@ -908,8 +920,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         <p>Unpriced cloud target(s) are skipped by capped comparison shortcuts: {previewList(skippedUnpricedCloudTargetIds)}.</p>
       </div> : null}
       <div className="actions">
-        <button onClick={openLocalRuntimeDetection}><Search size={14} />Detect runtime</button>
-        <button onClick={openHuggingFaceLocalModelSetup}><Settings size={14} />Local model</button>
+        <button title={localSetupTitle} onClick={openSmartLocalSetup}>{localSetupPrefersRuntimeDetection ? <Search size={14} /> : <Wrench size={14} />}{localSetupLabel}</button>
         <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
         <button disabled={busy || activeRunInProgress} title={liveCloudTargetIds.length ? `Validate ${liveCloudTargetIds.length} configured cloud target(s) with real provider probes` : 'Add a cloud target before validating live provider access'} onClick={() => validateDashboardCloudTargets().catch(error => setMessage(String(error)))}><ShieldCheck size={14} />{liveCloudTargetIds.length ? 'Validate cloud' : 'Add cloud target'}</button>
         <button disabled={primaryBenchmarkActionDisabled} title={primaryBenchmarkActionTitle} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
