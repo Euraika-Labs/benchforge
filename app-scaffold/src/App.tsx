@@ -5046,6 +5046,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
         {localCloudTargetIds.length ? <span className={`mini-tag ${localCloudSelectedUnpricedCloudTargetIds.length ? 'warn' : ''}`} title={localCloudShortcutTitle}>
           {localCloudSelectedUnpricedCloudTargetIds.length ? 'pricing needed' : 'cost-ready'}
         </span> : null}
+        {localCloudSelectedUnpricedCloudTargetIds.length ? <button title={localCloudShortcutTitle} onClick={() => repairRunPricingBlockers(localCloudSelectedUnpricedCloudTargetIds)}><Pencil size={14} />Add pricing</button> : null}
       </div>
       <div className="checks target-checks">{targets.map(target => {
         const checked = selected.includes(target.id);
