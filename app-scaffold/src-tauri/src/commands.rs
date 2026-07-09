@@ -297,6 +297,15 @@ pub fn create_target(
 }
 
 #[tauri::command]
+pub fn duplicate_target(
+    state: State<'_, store::AppState>,
+    id: String,
+) -> Result<TargetDto, String> {
+    let conn = state.conn.lock().map_err(|err| err.to_string())?;
+    duplicate_target_for_conn(&conn, &id)
+}
+
+#[tauri::command]
 pub fn create_target_with_benchmark_handoff(
     state: State<'_, store::AppState>,
     request: CreateTargetBenchmarkHandoffRequest,
@@ -469,6 +478,60 @@ fn target_dto_for_conn(conn: &rusqlite::Connection, id: &str) -> Result<TargetDt
         .ok_or_else(|| format!("target {} not found", id))?;
     let adapter_map = benchmark_adapter_map();
     Ok(target_dto_from_record(target, &adapter_map))
+}
+
+fn duplicate_target_for_conn(conn: &rusqlite::Connection, id: &str) -> Result<TargetDto, String> {
+    let source = store::get_target(conn, id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| format!("target {} not found", id))?;
+    let config =
+        serde_json::from_str(&source.config_json).unwrap_or_else(|_| serde_json::json!({}));
+    let (copy_id, copy_name) = next_duplicate_target_identity(conn, &source.id, &source.name)?;
+    let target = persist_target_request(
+        conn,
+        CreateTargetRequest {
+            id: copy_id,
+            name: copy_name,
+            kind: source.kind,
+            adapter_id: source.adapter_id,
+            config,
+        },
+    )?;
+    target_dto_for_conn(conn, &target.id)
+}
+
+fn next_duplicate_target_identity(
+    conn: &rusqlite::Connection,
+    source_id: &str,
+    source_name: &str,
+) -> Result<(String, String), String> {
+    let stem = slugify_id(source_id);
+    for index in 1..=1000 {
+        let suffix = if index == 1 {
+            "copy".to_string()
+        } else {
+            format!("copy-{}", index)
+        };
+        let candidate_id = format!("{}-{}", stem, suffix);
+        if !is_valid_target_id(&candidate_id) {
+            continue;
+        }
+        let exists = store::get_target(conn, &candidate_id)
+            .map_err(|err| err.to_string())?
+            .is_some();
+        if !exists {
+            let candidate_name = if index == 1 {
+                format!("{} Copy", source_name)
+            } else {
+                format!("{} Copy {}", source_name, index)
+            };
+            return Ok((candidate_id, candidate_name));
+        }
+    }
+    Err(format!(
+        "invalid_target: could not create a unique copy id for target {}",
+        source_id
+    ))
 }
 
 #[tauri::command]
@@ -19917,6 +19980,68 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("existing target"), "{err}");
+    }
+
+    #[test]
+    fn duplicate_target_copies_safe_config_and_clears_validation() {
+        let conn = store::open_memory().unwrap();
+        persist_target_request(
+            &conn,
+            target_request(
+                "remote-compatible",
+                "Remote Compatible",
+                "direct_model",
+                "openai-compatible",
+                serde_json::json!({
+                    "model": "old-model",
+                    "base_url": "https://example.com/v1",
+                    "api_key_keychain": "openai-compatible-https-example-com-v1",
+                    "api_key_env": "EXAMPLE_API_KEY",
+                    "input_price_usd_per_million_tokens": 0.25,
+                    "output_price_usd_per_million_tokens": 2.0
+                }),
+            ),
+        )
+        .expect("source target should save");
+        store::set_target_validation(
+            &conn,
+            "remote-compatible",
+            "error",
+            "model_not_found: old validation",
+            "2026-07-09T00:00:00Z",
+        )
+        .expect("validation should save");
+
+        let duplicated =
+            duplicate_target_for_conn(&conn, "remote-compatible").expect("target should clone");
+
+        assert_eq!(duplicated.id, "remote-compatible-copy");
+        assert_eq!(duplicated.name, "Remote Compatible Copy");
+        assert_eq!(duplicated.model.as_deref(), Some("old-model"));
+        assert_eq!(duplicated.validation_status, None);
+        assert_eq!(duplicated.validation_detail, None);
+        assert_eq!(duplicated.validation_checked_at, None);
+        assert_eq!(duplicated.input_price_usd_per_million_tokens, Some(0.25));
+        assert_eq!(duplicated.output_price_usd_per_million_tokens, Some(2.0));
+
+        let stored = store::get_target(&conn, "remote-compatible-copy")
+            .unwrap()
+            .expect("duplicate should exist");
+        let config: serde_json::Value = serde_json::from_str(&stored.config_json).unwrap();
+        assert_eq!(
+            config["api_key_keychain"],
+            "openai-compatible-https-example-com-v1"
+        );
+        assert_eq!(config["api_key_env"], "EXAMPLE_API_KEY");
+
+        let next_duplicate = duplicate_target_for_conn(&conn, "remote-compatible")
+            .expect("second duplicate should use a unique id");
+        assert_eq!(next_duplicate.id, "remote-compatible-copy-2");
+
+        let source = store::get_target(&conn, "remote-compatible")
+            .unwrap()
+            .expect("source should still exist");
+        assert_eq!(source.validation_status.as_deref(), Some("error"));
     }
 
     #[test]

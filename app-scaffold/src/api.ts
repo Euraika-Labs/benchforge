@@ -53,6 +53,25 @@ export async function createTarget(target: { id: string; name: string; kind: str
   return invoke<Target>('create_target', { request: target });
 }
 
+export async function duplicateTarget(id: string): Promise<Target> {
+  if (!isTauri()) {
+    const target = (await listTargets()).find(item => item.id === id);
+    if (!target) {
+      throw new Error(`target ${id} not found`);
+    }
+    return {
+      ...target,
+      id: `${id}-copy`,
+      name: `${target.name} Copy`,
+      status: 'unknown',
+      validationStatus: null,
+      validationDetail: null,
+      validationCheckedAt: null,
+    };
+  }
+  return invoke<Target>('duplicate_target', { id });
+}
+
 export async function createTargetWithBenchmarkHandoff(
   target: { id: string; name: string; kind: string; adapterId: string; config?: Record<string, unknown> },
   options: { benchmarkPackId?: string; benchmarkTargetIds?: string[]; repetitions?: number; warmupRuns?: number; concurrency?: number; maxCostUsd?: number } = {},

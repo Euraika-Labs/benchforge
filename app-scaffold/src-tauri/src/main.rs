@@ -555,6 +555,7 @@ fn main() {
             commands::list_adapters,
             commands::list_targets,
             commands::create_target,
+            commands::duplicate_target,
             commands::create_target_with_benchmark_handoff,
             commands::set_target_enabled,
             commands::delete_target,

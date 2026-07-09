@@ -38,6 +38,7 @@ import {
   deleteBenchmarkPackTask,
   deleteHuggingFaceModel,
   detectLocalRuntimes,
+  duplicateTarget,
   estimateRunPlan,
   exportBenchmarkPack,
   listDiagnostics,
@@ -1429,6 +1430,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [harnessToolResult, setHarnessToolResult] = useState<HarnessToolResult | null>(null);
   const [editingHarnessTargetId, setEditingHarnessTargetId] = useState('');
   const [loadingTargetId, setLoadingTargetId] = useState('');
+  const [duplicatingTargetId, setDuplicatingTargetId] = useState('');
 
   useEffect(() => {
     if (!adapterId && runnableAdapters[0]) {
@@ -2812,6 +2814,36 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setMessage(`Copied redacted target config for ${target.name}`);
   }
 
+  async function duplicateExistingTarget(target: Target) {
+    if (target.id === 'mock-agent') {
+      setMessage('Mock target is built in and does not need a duplicate');
+      return;
+    }
+    setDuplicatingTargetId(target.id);
+    try {
+      const duplicated = await duplicateTarget(target.id);
+      setValidations(current => {
+        const next = { ...current };
+        delete next[duplicated.id];
+        return next;
+      });
+      await onRefresh();
+      if (duplicated.kind === 'direct_model') {
+        await loadTargetForEdit(duplicated);
+        setMessage(`Duplicated ${target.name} as ${duplicated.name}. Edit the clone, then save and validate before comparing.`);
+        return;
+      }
+      if (duplicated.kind === 'benchmark_harness') {
+        await loadHarnessForEdit(duplicated);
+        setMessage(`Duplicated ${target.name} as ${duplicated.name}. Edit the harness clone, then save and validate before running.`);
+        return;
+      }
+      setMessage(`Duplicated ${target.name} as ${duplicated.name}`);
+    } finally {
+      setDuplicatingTargetId('');
+    }
+  }
+
   async function toggleTargetEnabled(target: Target) {
     const nextEnabled = target.enabled === false;
     if (!nextEnabled && target.id === 'mock-agent') {
@@ -3019,7 +3051,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       const storedStatus = targetEnabled ? t.status : 'disabled';
       const storedStatusClass = targetEnabled ? t.status : 'warn';
       const endpointDisplay = targetEndpointDisplay(t);
-      return <tr key={t.id}><td>{t.name}</td><td><span className="target-identity">{t.model || '-'}</span></td><td><span className="target-identity">{endpointDisplay || '-'}</span></td><td>{t.kind}</td><td>{t.adapterId}</td><td><span className={`pill ${storedStatusClass}`}>{storedStatus}</span></td><td>{validation ? <><span className={`pill ${validation.status === 'ok' ? 'ok' : validation.status === 'error' ? 'error' : 'warn'}`}>{validation.status}</span> {validation.detail}{validation.checkedAt ? <div className="muted">Checked {formatDateTime(validation.checkedAt)}</div> : null}</> : <span className="muted">{targetEnabled ? 'not checked' : 'disabled'}</span>}</td><td><div className="row-actions"><button disabled={!runnable} title={runnable ? 'Open Run Builder with this target' : 'Enable and validate this target before running it'} onClick={() => { openRunBuilder(runBuilderIntentForTarget(t)); setMessage(`Run Builder ready for ${t.name}`); }}><Play size={14} />Run</button>{comparableModel ? <button disabled={!comparisonIntent && !pricingRepairTarget} title={comparisonIntent ? 'Compare this target against the first available priced local/cloud counterpart' : pricingRepairTarget ? 'Add input/output pricing before opening a capped local/cloud comparison' : 'Add an enabled target from the other side before comparing'} onClick={() => { if (comparisonIntent) { openComparisonForTarget(t); return; } if (pricingRepairTarget) { openPricingRepairForComparison(pricingRepairTarget).catch(error => setMessage(String(error))); } }}>{pricingRepairTarget && !comparisonIntent ? <Pencil size={14} /> : <ClipboardCheck size={14} />}{pricingRepairTarget && !comparisonIntent ? 'Pricing' : 'Compare'}</button> : null}<button disabled={Boolean(loadingTargetId) || !editable || !targetEnabled} title={!targetEnabled ? 'Enable target before editing it' : editable ? 'Edit target' : 'This target type is not editable here'} onClick={() => { if (t.kind === 'benchmark_harness') { loadHarnessForEdit(t).catch(error => setMessage(String(error))); } else { loadTargetForEdit(t).catch(error => setMessage(String(error))); } }}><Pencil size={14} />{loadingTargetId === t.id ? 'Loading' : 'Edit'}</button><button disabled={Boolean(loadingTargetId)} title="Copy redacted target JSON without secrets" onClick={() => copyTargetConfig(t).catch(error => setMessage(String(error)))}><Copy size={14} />Config</button><button disabled={Boolean(validating) || !targetEnabled} onClick={() => validateOne(t.id).catch(error => setMessage(String(error)))}>{validating === t.id ? 'Checking' : 'Validate'}</button><button disabled={Boolean(validating) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : targetEnabled ? 'Disable target without deleting history' : 'Enable target'} onClick={() => toggleTargetEnabled(t).catch(error => setMessage(String(error)))}>{targetEnabled ? <Square size={14} /> : <Play size={14} />}{targetEnabled ? 'Disable' : 'Enable'}</button><button disabled={Boolean(validating) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : 'Delete target permanently'} onClick={() => removeTarget(t).catch(error => setMessage(String(error)))}><Trash2 size={14} />Delete</button></div></td></tr>;
+      return <tr key={t.id}><td>{t.name}</td><td><span className="target-identity">{t.model || '-'}</span></td><td><span className="target-identity">{endpointDisplay || '-'}</span></td><td>{t.kind}</td><td>{t.adapterId}</td><td><span className={`pill ${storedStatusClass}`}>{storedStatus}</span></td><td>{validation ? <><span className={`pill ${validation.status === 'ok' ? 'ok' : validation.status === 'error' ? 'error' : 'warn'}`}>{validation.status}</span> {validation.detail}{validation.checkedAt ? <div className="muted">Checked {formatDateTime(validation.checkedAt)}</div> : null}</> : <span className="muted">{targetEnabled ? 'not checked' : 'disabled'}</span>}</td><td><div className="row-actions"><button disabled={!runnable} title={runnable ? 'Open Run Builder with this target' : 'Enable and validate this target before running it'} onClick={() => { openRunBuilder(runBuilderIntentForTarget(t)); setMessage(`Run Builder ready for ${t.name}`); }}><Play size={14} />Run</button>{comparableModel ? <button disabled={!comparisonIntent && !pricingRepairTarget} title={comparisonIntent ? 'Compare this target against the first available priced local/cloud counterpart' : pricingRepairTarget ? 'Add input/output pricing before opening a capped local/cloud comparison' : 'Add an enabled target from the other side before comparing'} onClick={() => { if (comparisonIntent) { openComparisonForTarget(t); return; } if (pricingRepairTarget) { openPricingRepairForComparison(pricingRepairTarget).catch(error => setMessage(String(error))); } }}>{pricingRepairTarget && !comparisonIntent ? <Pencil size={14} /> : <ClipboardCheck size={14} />}{pricingRepairTarget && !comparisonIntent ? 'Pricing' : 'Compare'}</button> : null}<button disabled={Boolean(loadingTargetId) || !editable || !targetEnabled} title={!targetEnabled ? 'Enable target before editing it' : editable ? 'Edit target' : 'This target type is not editable here'} onClick={() => { if (t.kind === 'benchmark_harness') { loadHarnessForEdit(t).catch(error => setMessage(String(error))); } else { loadTargetForEdit(t).catch(error => setMessage(String(error))); } }}><Pencil size={14} />{loadingTargetId === t.id ? 'Loading' : 'Edit'}</button><button disabled={Boolean(loadingTargetId) || Boolean(duplicatingTargetId) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : 'Clone this target with the same safe configuration'} onClick={() => duplicateExistingTarget(t).catch(error => setMessage(String(error)))}><Copy size={14} />{duplicatingTargetId === t.id ? 'Duplicating' : 'Duplicate'}</button><button disabled={Boolean(loadingTargetId)} title="Copy redacted target JSON without secrets" onClick={() => copyTargetConfig(t).catch(error => setMessage(String(error)))}><Copy size={14} />Config</button><button disabled={Boolean(validating) || !targetEnabled} onClick={() => validateOne(t.id).catch(error => setMessage(String(error)))}>{validating === t.id ? 'Checking' : 'Validate'}</button><button disabled={Boolean(validating) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : targetEnabled ? 'Disable target without deleting history' : 'Enable target'} onClick={() => toggleTargetEnabled(t).catch(error => setMessage(String(error)))}>{targetEnabled ? <Square size={14} /> : <Play size={14} />}{targetEnabled ? 'Disable' : 'Enable'}</button><button disabled={Boolean(validating) || t.id === 'mock-agent'} title={t.id === 'mock-agent' ? 'Built-in target' : 'Delete target permanently'} onClick={() => removeTarget(t).catch(error => setMessage(String(error)))}><Trash2 size={14} />Delete</button></div></td></tr>;
     })}</tbody></table>
     <h2>Adapters</h2><table><thead><tr><th>Name</th><th>Kind</th><th>Command / Endpoint</th><th>Validation</th></tr></thead><tbody>{adapters.map(adapter => <tr key={adapter.id}><td>{adapter.name}</td><td>{adapter.kind}</td><td>{adapter.command ?? adapter.defaultBaseUrl ?? '-'}</td><td><span className={`pill ${adapter.validationStatus}`}>{adapter.validationStatus}</span> {adapter.validationDetail}</td></tr>)}</tbody></table>
   </section>;
