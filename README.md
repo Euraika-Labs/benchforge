@@ -204,7 +204,7 @@ In the desktop app, open Settings, save `HF_TOKEN` if the model is gated, then u
 
 ### Local Vs Cloud Comparison
 
-1. Add and validate a local OpenAI-compatible target, such as Ollama, LM Studio, or `llama.cpp`.
+1. Add and validate a local OpenAI-compatible target, such as Ollama, LM Studio, or `llama.cpp`. If Doctor already sees a reachable local endpoint, opening Targets auto-detects it; otherwise use Local Runtimes -> Detect.
 2. Add and validate a cloud target, such as OpenAI, Anthropic, Mistral, OpenRouter, Azure OpenAI, or Gemini. If a provider key is already available, BenchForge preselects that provider and a priced preset so the target form can go straight to **Add + run** or **Add + compare**.
 3. On the Dashboard, click **Run model comparison** to validate and run the recommended local/cloud pair with the capped default pack. Use Dashboard **Compare all** or the Run Builder **Local + cloud** shortcut when you want to include every comparable local target and priced cloud target. Manual local/cloud prompt selections also move untouched quick defaults to 3 repetitions, 1 warmup, and the default cap. Shortcuts prefer cloud targets with input/output pricing so capped runs can estimate spend.
 4. Compare pass rate, score, p95 latency, throughput, cost, served model identity, and evidence warnings in Results.

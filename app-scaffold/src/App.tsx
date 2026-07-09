@@ -1061,8 +1061,8 @@ function dashboardLocalRuntimeCheck(checks: DoctorCheck[]) {
       : 'Doctor has not checked local runtime endpoints yet',
     category: 'Benchmark readiness',
     importance: 'recommended',
-    remediation: ready ? 'Use Targets > Local Runtimes > Detect to add a reachable endpoint.' : 'Start Ollama, LM Studio, llama.cpp, vLLM, or MLX, then detect local runtimes.',
-    command: 'Targets > Local Runtimes > Detect',
+    remediation: ready ? 'Open Targets to auto-detect reachable endpoints, or use Local Runtimes > Detect.' : 'Start Ollama, LM Studio, llama.cpp, vLLM, or MLX, then detect local runtimes.',
+    command: 'Targets > Local Runtimes',
   };
   return {
     check,
@@ -1664,6 +1664,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
   const [editingHarnessTargetId, setEditingHarnessTargetId] = useState('');
   const [loadingTargetId, setLoadingTargetId] = useState('');
   const [duplicatingTargetId, setDuplicatingTargetId] = useState('');
+  const autoLocalRuntimeDetectAttemptedRef = useRef(false);
 
   const selectedAdapter = runnableAdapters.find(adapter => adapter.id === adapterId);
   const modelPresets = useMemo(() => adapterModelPresets(selectedAdapter), [selectedAdapter]);
@@ -1675,6 +1676,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
   const editingHarnessTarget = targets.find(target => target.id === editingHarnessTargetId);
   const selectedHarnessPreset = harnessPresets.find(preset => preset.id === harnessPresetId);
   const modelBenchmarkPacks = useMemo(() => modelBenchmarkPackOptions(packs), [packs]);
+  const localRuntimeDoctorCheck = useMemo(() => dashboardLocalRuntimeCheck(checks), [checks]);
   const enabledModelTargets = targets.filter(targetIsSelectableModel);
   const localComparisonTargetIds = enabledModelTargets.filter(isLocalModelTarget).map(target => target.id);
   const cloudComparisonTargets = enabledModelTargets.filter(isCloudModelTarget);
@@ -1715,6 +1717,26 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     }
     setAutoBenchmarkPackId(recommendedComparisonPackId(packs));
   }, [autoBenchmarkPackId, modelBenchmarkPacks, packs]);
+
+  useEffect(() => {
+    if (
+      autoLocalRuntimeDetectAttemptedRef.current
+      || setupIntent
+      || repairIntent
+      || editingTargetId
+      || editingHarnessTargetId
+      || detectingLocal
+      || localRuntimes.length
+      || localComparisonTargetIds.length
+      || localRuntimeDoctorCheck.check.status !== 'ok'
+    ) {
+      return;
+    }
+    autoLocalRuntimeDetectAttemptedRef.current = true;
+    setAutoBenchmarkAfterAdd(true);
+    setMessage('Ready local runtime found by Doctor. Detecting models so it can be added to the next benchmark.');
+    void detectLocal().catch(error => setMessage(String(error)));
+  }, [detectingLocal, editingHarnessTargetId, editingTargetId, localComparisonTargetIds.length, localRuntimes.length, localRuntimeDoctorCheck.check.status, repairIntent, setupIntent, setMessage]);
 
   useEffect(() => {
     if (!repairIntent) {
@@ -1760,6 +1782,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
     const setupBenchmarkPackId = resolveModelBenchmarkPackId(setupIntent.benchmarkPackId, modelBenchmarkPacks, packs);
     if (setupIntent.code === 'local_runtime_detect') {
       onSetupIntentConsumed();
+      autoLocalRuntimeDetectAttemptedRef.current = true;
       clearTargetForm({ preserveAutoBenchmarkScope: true });
       clearHarnessForm();
       setAutoBenchmarkAfterAdd(true);
@@ -3311,7 +3334,7 @@ function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, open
       <p className="muted">Use the command your external harness would run locally. BenchForge Worker captures scores, errors, and raw harness output as run artifacts.</p>
     </div>
     <div className="panel compact">
-      <div className="section-head"><h2>Local Runtimes</h2><button disabled={detectingLocal} onClick={() => detectLocal().catch(error => setMessage(String(error)))}><Search size={16} />{detectingLocal ? 'Detecting' : 'Detect'}</button></div>
+      <div className="section-head"><h2>Local Runtimes</h2><div className="actions"><span className={`pill ${localRuntimeDoctorCheck.check.status}`} title={localRuntimeDoctorCheck.check.detail}>{localRuntimeDoctorCheck.note}</span><button disabled={detectingLocal} onClick={() => { autoLocalRuntimeDetectAttemptedRef.current = true; detectLocal().catch(error => setMessage(String(error))); }}><Search size={16} />{detectingLocal ? 'Detecting' : 'Detect'}</button></div></div>
       <table><thead><tr><th>Runtime</th><th>Endpoint</th><th>Status</th><th>Model</th><th></th></tr></thead><tbody>{localRuntimes.map(runtime => {
         const selectedModel = localSelections[runtime.id] ?? runtime.recommendedModel ?? runtime.models[0] ?? '';
         const runtimeResult = runtimeToolResult?.runtimeId === runtime.id ? runtimeToolResult : null;
