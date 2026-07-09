@@ -200,6 +200,7 @@ const automaticConnectivityMaxCostUsd = 0.05;
 const defaultComparisonMaxCostUsd = 1.0;
 const connectivityBenchmarkPackId = 'llm-connectivity';
 const defaultModelComparisonPackId = 'llm-basics';
+const dashboardPrimaryComparisonTargetLimit = 4;
 const preferredCloudSetupAdapterIds = ['openai', 'anthropic', 'mistral', 'gemini', 'openrouter', 'azure-openai', 'openai-compatible'];
 const emptyDoctorChecks: DoctorCheck[] = [];
 const fallbackModelBenchmarkPacks = [
@@ -590,6 +591,9 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
   const recommendedTargetIds = recommendedTargets.runTargetIds;
   const allComparableTargetIds = recommendedTargets.allRunTargetIds;
+  const primaryComparisonTargetIds = dashboardPrimaryComparisonTargetIds(recommendedTargetIds, allComparableTargetIds);
+  const primaryComparisonRunsAllComparable = primaryComparisonTargetIds.length > recommendedTargetIds.length
+    && primaryComparisonTargetIds.length === allComparableTargetIds.length;
   const setupLocalTargetIds = recommendedTargets.setupLocalTargetIds;
   const setupCloudTargetIds = recommendedTargets.setupCloudTargetIds;
   const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
@@ -613,10 +617,12 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const primaryBenchmarkActionDisabled = busy || (comparisonReady && !comparisonNeedsPricing && activeRunInProgress);
   const primaryBenchmarkActionTitle = activeRunInProgress && comparisonReady
     ? 'A benchmark job is already running'
-    : comparisonReady && !comparisonNeedsPricing && allComparableTargetIds.length > recommendedTargetIds.length
+    : comparisonReady && !comparisonNeedsPricing && primaryComparisonRunsAllComparable
+      ? `Runs all ${primaryComparisonTargetIds.length} comparable local/priced cloud targets with the same pack and capped cost.${skippedUnpricedCloudTargetIds.length ? ` Skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.` : ''}`
+      : comparisonReady && !comparisonNeedsPricing && allComparableTargetIds.length > primaryComparisonTargetIds.length
       ? `Runs the recommended pair: ${previewList(recommendedTargetIds)}. Use Compare all for all ${allComparableTargetIds.length} comparable priced targets.${skippedUnpricedCloudTargetIds.length ? ` Skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.` : ''}`
       : undefined;
-  const compareAllAvailable = comparisonReady && !comparisonNeedsPricing && allComparableTargetIds.length > recommendedTargetIds.length;
+  const compareAllAvailable = comparisonReady && !comparisonNeedsPricing && allComparableTargetIds.length > primaryComparisonTargetIds.length;
   const compareAllDisabled = busy || activeRunInProgress || !compareAllAvailable;
   const compareAllTitle = activeRunInProgress
     ? 'A benchmark job is already running'
@@ -634,7 +640,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
           ? `Add input/output pricing before running a capped reliability comparison: ${previewList(pricingRepairTargetIds)}`
           : !comparisonReady
             ? 'Add one enabled local model target and one enabled priced cloud model target'
-            : `Run ${benchmarkPackLabel('llm-reliability')} with ${recommendedTargetIds.length} recommended local/cloud target(s), 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap`;
+            : `Run ${benchmarkPackLabel('llm-reliability')} with ${primaryComparisonTargetIds.length} comparable local/cloud target(s), 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap`;
   function openLocalRuntimeDetection() {
     openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedComparisonPack, targetIds: setupCloudTargetIds });
     const comparisonNote = setupCloudTargetIds.length ? ` to compare with ${previewList(setupCloudTargetIds)}` : '';
@@ -698,7 +704,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   }
   async function runDashboardComparison(
     benchmarkPackId: string,
-    targetIds = recommendedTargetIds,
+    targetIds = primaryComparisonTargetIds,
     scopeLabelOverride = '',
   ) {
     const intent = localCloudRunBuilderIntent(targetIds, benchmarkPackId);
@@ -760,7 +766,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     }
   }
   function openComparisonRun(benchmarkPackId = recommendedComparisonPack) {
-    if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && recommendedTargetIds.length >= 2) {
+    if ((comparisonReady || nextBenchmarkStep.command.startsWith('Runs > Local + cloud')) && primaryComparisonTargetIds.length >= 2) {
       void runDashboardComparison(benchmarkPackId);
       return;
     }
@@ -1547,6 +1553,13 @@ function dashboardLocalCloudComparisonTargets(targets: Target[]): DashboardLocal
     pricingRepairTargetIds: uniqueIdsInOrder(pricingRepairTargetIds),
     skippedUnpricedCloudTargetIds: localIds.length && pricedCloudIds.length ? uniqueIdsInOrder(unpricedCloudIds) : [],
   };
+}
+
+function dashboardPrimaryComparisonTargetIds(recommendedTargetIds: string[], allComparableTargetIds: string[]) {
+  if (allComparableTargetIds.length >= 2 && allComparableTargetIds.length <= dashboardPrimaryComparisonTargetLimit) {
+    return allComparableTargetIds;
+  }
+  return recommendedTargetIds;
 }
 
 function compareDashboardComparisonTargetPriority(left: Target, right: Target) {
