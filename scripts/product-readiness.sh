@@ -48,9 +48,24 @@ run_make_target() {
 }
 
 latest_readiness_summary() {
-  if compgen -G "$LOG_ROOT"/*/summary.txt >/dev/null; then
-    ls -t "$LOG_ROOT"/*/summary.txt | head -n 1
+  local fallback=""
+  local summary
+
+  if ! compgen -G "$LOG_ROOT"/*/summary.txt >/dev/null; then
+    return
   fi
+
+  while IFS= read -r summary; do
+    if [[ -z "$fallback" ]]; then
+      fallback="$summary"
+    fi
+    if awk -F': ' '/^Mode:/ { found=1; exit ($2 == "full" ? 0 : 1) } END { if (!found) exit 1 }' "$summary"; then
+      printf "%s\n" "$summary"
+      return
+    fi
+  done < <(ls -t "$LOG_ROOT"/*/summary.txt)
+
+  printf "%s\n" "$fallback"
 }
 
 check_git_state() {

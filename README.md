@@ -396,6 +396,7 @@ Run these from the repository root.
 | `make verify-distribution-dmg` | Require Developer ID signing, Gatekeeper assessment, and notarization ticket validation. |
 
 Use focused `make *-smoke` targets when changing a specific workflow. Use `make benchmark-readiness` before handing benchmark-critical changes to another user.
+Readiness targets are time-bounded by default: 15 minutes per target for quick mode and 30 minutes for full mode. Set `BENCHFORGE_READINESS_TARGET_TIMEOUT_SECONDS=0` to disable that bound, or set a custom number of seconds when debugging slow hardware or downloads.
 Use `make product-readiness` before a release handoff to see which local gates are proven and which external live-provider or Apple distribution checks still need credentials.
 `make product-readiness` detects provider keys saved by the app in macOS Keychain as well as shell environment variables, but it still will not contact live providers unless `BENCHFORGE_PRODUCT_READINESS_RUN_LIVE=1` is set.
 The in-app Doctor surfaces the same product-readiness split: validated remote cloud targets count as live-provider evidence, while signed/notarized public distribution stays explicit until Apple release credentials are used.
@@ -437,7 +438,7 @@ Use `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` instead of a local keyc
 | A capped cloud run is blocked. | Add input/output pricing metadata for the target/model or remove the max-cost cap. Add cache read/write pricing too when you want provider-reported prompt-cache tokens priced separately. BenchForge blocks capped runs when it cannot estimate cost. |
 | Results mention pricing assumptions. | Add cache read/write token prices for the affected target, then rerun or re-export before treating cost ranking as decisive. Without those prices, cache tokens are visibly priced with the normal input-token rate. |
 | Local target validation fails. | Confirm the server is running, the base URL ends in `/v1` when required, and the model name matches the runtime's model list. |
-| Readiness fails. | Open the summary path printed by `make benchmark-readiness`; detailed logs are under `.benchforge/readiness/`. |
+| Readiness fails or times out. | Open the summary path printed by `make benchmark-readiness`; detailed logs are under `.benchforge/readiness/`. If a target timed out on a slow machine, rerun it directly or raise `BENCHFORGE_READINESS_TARGET_TIMEOUT_SECONDS`. |
 
 ## Known Limits
 

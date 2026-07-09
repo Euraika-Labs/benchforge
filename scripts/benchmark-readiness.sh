@@ -7,9 +7,10 @@ MODE="${1:-${BENCHFORGE_READINESS_MODE:-quick}}"
 CONTINUE_ON_FAILURE="${BENCHFORGE_READINESS_CONTINUE:-0}"
 LOG_ROOT="${BENCHFORGE_READINESS_LOG_DIR:-$ROOT/.benchforge/readiness}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-RUN_DIR="$LOG_ROOT/$STAMP"
+RUN_DIR="$LOG_ROOT/$STAMP-$$"
 SUMMARY="$RUN_DIR/summary.txt"
 SKIP_PROCESS_POSTFLIGHT="${BENCHFORGE_READINESS_SKIP_PROCESS_POSTFLIGHT:-0}"
+TARGET_TIMEOUT_SECONDS="${BENCHFORGE_READINESS_TARGET_TIMEOUT_SECONDS:-}"
 
 case "$MODE" in
   quick|full) ;;
@@ -20,6 +21,19 @@ case "$MODE" in
     ;;
 esac
 
+if [[ -z "$TARGET_TIMEOUT_SECONDS" ]]; then
+  if [[ "$MODE" == "full" ]]; then
+    TARGET_TIMEOUT_SECONDS=1800
+  else
+    TARGET_TIMEOUT_SECONDS=900
+  fi
+fi
+
+if ! [[ "$TARGET_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]]; then
+  echo "BENCHFORGE_READINESS_TARGET_TIMEOUT_SECONDS must be a non-negative integer"
+  exit 2
+fi
+
 mkdir -p "$RUN_DIR"
 : > "$SUMMARY"
 
@@ -27,19 +41,79 @@ record() {
   printf "%s\n" "$*" | tee -a "$SUMMARY"
 }
 
+collect_descendants() {
+  local pid="$1"
+  local child
+
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+    collect_descendants "$child"
+    printf "%s\n" "$child"
+  done
+}
+
+make_target_is_running() {
+  local pid="$1"
+  jobs -pr | grep -qx "$pid"
+}
+
+terminate_process_tree() {
+  local pid="$1"
+  local descendants
+
+  descendants="$(collect_descendants "$pid" || true)"
+  for child in $descendants; do
+    kill -TERM "$child" 2>/dev/null || true
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+
+  for _ in 1 2 3 4 5; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  for child in $descendants; do
+    kill -KILL "$child" 2>/dev/null || true
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
 run_make_target() {
   local target="$1"
   local description="$2"
   local log="$RUN_DIR/${target}.log"
+  local pid
+  local started_at
+  local elapsed
+  local rc
 
   record ""
   record "==> $target"
   record "$description"
-  if "$MAKE_BIN" -C "$ROOT" "$target" >"$log" 2>&1; then
+  "$MAKE_BIN" -C "$ROOT" "$target" >"$log" 2>&1 &
+  pid=$!
+  started_at=$SECONDS
+
+  while make_target_is_running "$pid"; do
+    elapsed=$((SECONDS - started_at))
+    if [[ "$TARGET_TIMEOUT_SECONDS" -gt 0 && "$elapsed" -ge "$TARGET_TIMEOUT_SECONDS" ]]; then
+      record "fail $target timed out after ${TARGET_TIMEOUT_SECONDS}s (log: $log)"
+      terminate_process_tree "$pid"
+      wait "$pid" 2>/dev/null || true
+      record "--- tail: $target ---"
+      tail -80 "$log" | tee -a "$SUMMARY"
+      record "--- end tail ---"
+      return 124
+    fi
+    sleep 1
+  done
+
+  if wait "$pid"; then
     record "ok   $target (log: $log)"
     return 0
   else
-    local rc=$?
+    rc=$?
     record "fail $target exited with $rc (log: $log)"
     record "--- tail: $target ---"
     tail -80 "$log" | tee -a "$SUMMARY"
@@ -88,6 +162,11 @@ stop_after_failure_if_needed() {
 record "BenchForge benchmark-readiness gate"
 record "Mode: $MODE"
 record "Logs: $RUN_DIR"
+if [[ "$TARGET_TIMEOUT_SECONDS" -eq 0 ]]; then
+  record "Per-target timeout: disabled"
+else
+  record "Per-target timeout: ${TARGET_TIMEOUT_SECONDS}s"
+fi
 record "Scope: clean first-run, local/cloud contracts, cloud model catalogs, local runtime discovery, validation, reports, worker harness imports, Hugging Face GGUF search/planning, and local-cloud workflow."
 record "Note: this does not spend cloud API credits; provider checks use loopback contract servers."
 
