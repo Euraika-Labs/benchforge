@@ -576,6 +576,8 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
   const recommendedTargetIds = recommendedTargets.runTargetIds;
   const allComparableTargetIds = recommendedTargets.allRunTargetIds;
+  const setupLocalTargetIds = recommendedTargets.setupLocalTargetIds;
+  const setupCloudTargetIds = recommendedTargets.setupCloudTargetIds;
   const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
   const skippedUnpricedCloudTargetIds = recommendedTargets.skippedUnpricedCloudTargetIds;
   const comparisonReady = compareCheck.status === 'ok';
@@ -609,11 +611,12 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       : 'Add more comparable local or priced cloud targets before comparing all models';
   const reliabilityComparisonDisabled = busy || activeRunInProgress || !comparisonReady || comparisonNeedsPricing || !hasReliabilityPack;
   function openLocalRuntimeDetection() {
-    openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedComparisonPack });
-    setMessage('Detecting local runtimes from Dashboard');
+    openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedComparisonPack, targetIds: setupCloudTargetIds });
+    const comparisonNote = setupCloudTargetIds.length ? ` to compare with ${previewList(setupCloudTargetIds)}` : '';
+    setMessage(`Detecting local runtimes from Dashboard${comparisonNote}`);
   }
   function openCloudTargetSetup() {
-    openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedComparisonPack });
+    openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedComparisonPack, targetIds: setupLocalTargetIds });
   }
   async function runDashboardIntent(intent: RunBuilderIntent, scopeLabelOverride = 'local/cloud comparison') {
     const benchmarkPackId = intent.benchmarkPackId ?? recommendedComparisonPack;
@@ -1374,6 +1377,8 @@ function dashboardCheck(checks: DoctorCheck[], id: string, label: string, status
 interface DashboardLocalCloudComparisonTargets {
   runTargetIds: string[];
   allRunTargetIds: string[];
+  setupLocalTargetIds: string[];
+  setupCloudTargetIds: string[];
   pricingRepairTargetIds: string[];
   skippedUnpricedCloudTargetIds: string[];
 }
@@ -1397,6 +1402,8 @@ function dashboardLocalCloudComparisonTargets(targets: Target[]): DashboardLocal
   return {
     runTargetIds: uniqueIdsInOrder(recommendedPairIds),
     allRunTargetIds: localIds.length && pricedCloudIds.length ? uniqueIdsInOrder([...localIds, ...pricedCloudIds]) : [],
+    setupLocalTargetIds: localIds[0] ? [localIds[0]] : [],
+    setupCloudTargetIds: pricedCloudIds[0] ? [pricedCloudIds[0]] : [],
     pricingRepairTargetIds: uniqueIdsInOrder(pricingRepairTargetIds),
     skippedUnpricedCloudTargetIds: localIds.length && pricedCloudIds.length ? uniqueIdsInOrder(unpricedCloudIds) : [],
   };
@@ -5380,6 +5387,8 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
   const installableLocalMissing = checks.some(check => isLocalModelToolCheck(check) && check.status !== 'ok');
   const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
   const recommendedTargetIds = recommendedTargets.runTargetIds;
+  const setupLocalTargetIds = recommendedTargets.setupLocalTargetIds;
+  const setupCloudTargetIds = recommendedTargets.setupCloudTargetIds;
   const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
   const recommendedPack = recommendedComparisonPackId(packs);
   const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
@@ -5405,13 +5414,15 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
       }
     }
     if (check.command.startsWith('Settings') && localRuntimeCheck.check.status === 'ok') {
-      openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedPack });
-      setMessage('Detecting local runtimes for the next benchmark step');
+      openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedPack, targetIds: setupCloudTargetIds });
+      const comparisonNote = setupCloudTargetIds.length ? ` to compare with ${previewList(setupCloudTargetIds)}` : '';
+      setMessage(`Detecting local runtimes for the next benchmark step${comparisonNote}`);
       return;
     }
     if (check.command.startsWith('Targets')) {
-      openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedPack });
-      setMessage('Preparing cloud target setup for the next benchmark step');
+      openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedPack, targetIds: setupLocalTargetIds });
+      const comparisonNote = setupLocalTargetIds.length ? ` with ${previewList(setupLocalTargetIds)} selected for comparison` : '';
+      setMessage(`Preparing cloud target setup for the next benchmark step${comparisonNote}`);
       return;
     }
     setPage(nextBenchmarkStepPage(check));
@@ -5608,6 +5619,7 @@ function cloudKeyDoctorAdapterId(check: DoctorCheck) {
 }
 
 function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId: string, benchmarkPackId: string, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
+  const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
@@ -5617,12 +5629,12 @@ function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId
   if (check.id.startsWith('cloud-key-')) {
     const adapterId = cloudKeyDoctorAdapterId(check);
     return <button onClick={() => {
-      openTargetSetup({ adapterId, code: 'missing_key', benchmarkPackId });
+      openTargetSetup({ adapterId, code: 'missing_key', benchmarkPackId, targetIds: recommendedTargets.setupLocalTargetIds });
     }}><Settings size={14} />Key</button>;
   }
   if (check.id.startsWith('endpoint-')) {
     return <button onClick={() => {
-      openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId });
+      openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId, targetIds: recommendedTargets.setupCloudTargetIds });
     }}><Search size={14} />Detect</button>;
   }
   if (check.id === 'benchmark-target-local') {
@@ -5641,7 +5653,7 @@ function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId
       if (repair) {
         openReadinessTargetRepair(targets, 'cloud', openTargetRepair, setMessage);
       } else {
-        openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId });
+        openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId, targetIds: recommendedTargets.setupLocalTargetIds });
       }
     }}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Cloud'}</button>;
   }
@@ -9161,6 +9173,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
   const activeDownloadCount = downloadJobs.filter(isDownloadJobActive).length;
   const activeServerStartCount = serverJobs.filter(isServerJobActive).length;
   const downloadedGgufCount = hf?.models.reduce((total, model) => total + model.ggufFiles.length, 0) ?? 0;
+  const settingsComparisonTargets = dashboardLocalCloudComparisonTargets(targets);
   const selectableCloudTargets = targets.filter(target => targetIsSelectableModel(target) && isCloudModelTarget(target));
   const selectableCloudTargetCount = selectableCloudTargets.length;
   const selectablePricedCloudTargetCount = selectableCloudTargets.filter(targetHasInputOutputPricing).length;
@@ -9193,7 +9206,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
       setMessage(`Add input/output pricing before automatic local/cloud comparison: ${previewList(unpricedCloudComparisonTargetIds)}`);
       return;
     }
-    openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: autoBenchmarkPackId });
+    openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: autoBenchmarkPackId, targetIds: settingsComparisonTargets.setupLocalTargetIds });
   }
 
   async function refreshHf() {
