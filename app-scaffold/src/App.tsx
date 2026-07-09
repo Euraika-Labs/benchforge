@@ -1480,7 +1480,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const missingTargetIds = repairIntent.targetIds.filter(id => !targetById.has(id));
     const editableTargets = existingTargets.filter(targetRepairTargetCanEdit);
     onRepairIntentConsumed();
-    if (editableTargets.length === 1) {
+    if (editableTargets.length) {
       const target = editableTargets[0];
       void (async () => {
         if (target.kind === 'benchmark_harness') {
@@ -1492,12 +1492,9 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
           ? repairIntent.targetIds.filter(id => id !== target.id)
           : [];
         const skippedNote = skipped.length ? ` Other affected target(s): ${previewList(skipped)}.` : '';
-        setMessage(`${errorCategoryRepairHint(repairIntent.code)} Loaded ${target.name} for editing.${skippedNote}`);
+        const firstNote = editableTargets.length > 1 ? ` Loaded ${target.name}, the first affected target, for editing.` : ` Loaded ${target.name} for editing.`;
+        setMessage(`${errorCategoryRepairHint(repairIntent.code)}${firstNote}${skippedNote}`);
       })();
-      return;
-    }
-    if (editableTargets.length > 1) {
-      setMessage(`${errorCategoryRepairHint(repairIntent.code)} Choose one affected target to edit: ${previewList(editableTargets.map(target => target.id))}`);
       return;
     }
     const unavailableTargetIds = existingTargets.map(target => target.id);
