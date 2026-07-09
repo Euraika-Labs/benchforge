@@ -10081,7 +10081,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
     .map(target => target.id);
   const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters);
   const cloudComparisonNeedsPricing = Boolean(selectableCloudTargetCount && unpricedCloudComparisonTargetIds.length && !selectablePricedCloudTargetCount);
-  const autoCompareReady = autoBenchmarkAfterStart && Boolean(selectedAutoCompareCloudTarget);
+  const autoCompareReady = autoBenchmarkAfterStart && autoCompareAfterStart && Boolean(selectedAutoCompareCloudTarget);
   const cloudComparisonStatus = hfCloudComparisonStatus(selectableCloudTargetCount, selectablePricedCloudTargetCount);
   const cloudComparisonActionLabel = cloudComparisonNeedsPricing ? 'Add pricing' : 'Add cloud target';
   const cloudComparisonActionTitle = cloudComparisonNeedsPricing
@@ -10561,7 +10561,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
         ? `Verifying existing ${plan.selectedFile}`
         : `Downloading ${plan.selectedFile}${plan.plannedBytes ? ` (${formatBytes(plan.plannedBytes)})` : ''}`);
       const settings = autoStartAfterDownload ? localServerSettings() : null;
-      const compareWithCloud = autoBenchmarkAfterStart && autoCompareAfterStart && Boolean(selectedAutoCompareCloudTarget);
+      const compareWithCloud = autoCompareReady;
       const job = await startHuggingFaceDownloadJob(repoId, plan.selectedFile, modelRevision || undefined, {
         startAfterDownload: autoStartAfterDownload,
         runConnectivityAfterStart: autoBenchmarkAfterStart,
@@ -10603,7 +10603,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
       const settings = localServerSettings();
       const serverJobId = await startModelFromSelection(hf, settings);
       if (serverJobId) {
-        setMessage(`Server start job ${serverJobId.slice(0, 8)} queued${hfBenchmarkHandoffNote(autoBenchmarkAfterStart, autoBenchmarkPackId, modelBenchmarkPacks, autoCompareAfterStart && Boolean(selectedAutoCompareCloudTarget))}`);
+        setMessage(`Server start job ${serverJobId.slice(0, 8)} queued${hfBenchmarkHandoffNote(autoBenchmarkAfterStart, autoBenchmarkPackId, modelBenchmarkPacks, autoCompareReady)}`);
       }
     } catch (error) {
       setMessage(String(error));
@@ -10996,7 +10996,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
         <label>Repo ID <input value={repoId} onChange={event => { setRepoId(event.target.value); setModelFileDetails([]); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }} placeholder="org/model-GGUF" /></label>
         <label>GGUF file {modelFileDetails.length ? <select value={filename} onChange={event => { setFilename(event.target.value); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }}><option value="">Auto-select</option>{modelFileDetails.filter(detail => isRunnableGgufFile(detail.file)).map(detail => <option key={detail.file} value={detail.file}>{detail.file}{detail.sizeBytes ? ` (${formatBytes(detail.sizeBytes)})` : ''}</option>)}</select> : <input value={filename} onChange={event => { setFilename(event.target.value); setPreflight(null); setDownloadPlan(null); setDownloadProgress(null); setDownloadFailed(false); }} placeholder="optional, e.g. model-q4_k_m.gguf" />}</label>
         <button disabled={busy || modelFileBusy || !repoId.trim()} onClick={() => inspectModelFiles().catch(error => setMessage(String(error)))}><Search size={16} />{modelFileBusy ? 'Resolving' : 'Files'}</button>
-        <button disabled={busy || activeDownloadInProgress || activeServerStartInProgress || !repoId.trim()} onClick={downloadModel}>{downloadFailed ? <RotateCcw size={16} /> : <Download size={16} />}{hfDownloadActionLabel(downloadFailed, autoStartAfterDownload, autoBenchmarkAfterStart, autoCompareReady && autoCompareAfterStart)}</button>
+        <button disabled={busy || activeDownloadInProgress || activeServerStartInProgress || !repoId.trim()} onClick={downloadModel}>{downloadFailed ? <RotateCcw size={16} /> : <Download size={16} />}{hfDownloadActionLabel(downloadFailed, autoStartAfterDownload, autoBenchmarkAfterStart, autoCompareReady)}</button>
         {hf?.serverRunning ? <button disabled={busy || activeServerStartInProgress} onClick={stopModel}>Stop</button> : null}
         <details className="advanced-section" open={localAdvancedOpen} onToggle={event => setLocalAdvancedOpen(event.currentTarget.open)}>
           <summary><SlidersHorizontal size={14} />Advanced</summary>
@@ -11005,13 +11005,13 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
             <label>Port <input type="number" min="1024" max="65535" step="1" value={port} onChange={event => setPort(Number(event.target.value))} /></label>
             <label>Context <input type="number" min="128" max="131072" step="1" value={context} onChange={event => { setContext(Number(event.target.value)); setPreflight(null); }} /></label>
             <button disabled={busy || preflightBusy || !repoId.trim()} onClick={() => runPreflight().catch(error => setMessage(String(error)))}><ShieldCheck size={16} />{preflightBusy ? 'Checking' : 'Check'}</button>
-            <button disabled={busy || activeServerStartInProgress || !repoId.trim()} onClick={startModel}><Play size={16} />{hfStartActionLabel(autoBenchmarkAfterStart, autoCompareReady && autoCompareAfterStart)}</button>
+            <button disabled={busy || activeServerStartInProgress || !repoId.trim()} onClick={startModel}><Play size={16} />{hfStartActionLabel(autoBenchmarkAfterStart, autoCompareReady)}</button>
             <button disabled={busy || activeServerStartInProgress || !hf?.serverRunning || !repoId.trim()} onClick={addLocalTarget}><Plus size={16} />Add target</button>
           </div>
         </details>
       </div>
       {downloadPlan ? <div className={`preflight-box ${downloadPlan.alreadyDownloaded ? 'ok' : downloadFailed ? 'warn' : ''}`}><strong>Download plan</strong><p>{downloadPlan.summary}</p><div className="mini-grid"><span>{downloadPlan.plannedBytes ? formatBytes(downloadPlan.plannedBytes) : 'size unknown'}</span><span>{downloadPlan.existingBytes ? `${formatBytes(downloadPlan.existingBytes)} local` : 'no complete local file'}</span><span>{downloadPlan.partialBytes ? `${formatBytes(downloadPlan.partialBytes)} partial` : 'no partial fragments'}</span><span>{downloadPlan.alreadyDownloaded ? 'already downloaded' : 'needs transfer'}</span></div><p className="muted">{downloadPlan.diskCheck} {downloadPlan.retryHint}</p><p className="muted">{downloadPlan.localDir}</p></div> : null}
-      {autoBenchmarkAfterStart && !autoCompareReady ? <div className="preflight-box warn">
+      {autoBenchmarkAfterStart && autoCompareAfterStart && !autoCompareReady ? <div className="preflight-box warn">
         <div className="panel-head"><h2>Cloud comparison</h2><button title={cloudComparisonActionTitle} onClick={openCloudComparisonSetup}>{cloudComparisonNeedsPricing ? <Pencil size={14} /> : <Boxes size={14} />}{cloudComparisonActionLabel}</button></div>
         <p>{cloudComparisonStatus} The local model flow will still create a target and run the selected pack locally.</p>
       </div> : null}
