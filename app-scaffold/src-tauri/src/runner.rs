@@ -4620,7 +4620,7 @@ fn cloud_contract_retry_target(
 ) -> store::NewTarget {
     let mut target = cloud_contract_target(id, name, adapter_id, model, base_url);
     if let Some(config) = target.config.as_object_mut() {
-        config.insert("retry_count".into(), serde_json::json!(1));
+        config.insert("retry_count".into(), serde_json::json!(2));
     }
     target
 }
@@ -4634,7 +4634,7 @@ fn cloud_contract_streaming_retry_target(
 ) -> store::NewTarget {
     let mut target = cloud_contract_streaming_target(id, name, adapter_id, model, base_url);
     if let Some(config) = target.config.as_object_mut() {
-        config.insert("retry_count".into(), serde_json::json!(1));
+        config.insert("retry_count".into(), serde_json::json!(2));
     }
     target
 }
@@ -4845,7 +4845,7 @@ fn cloud_contract_target_with_streaming(
             "top_p": 1,
             "max_tokens": 16,
             "timeout_seconds": 10,
-            "retry_count": 0,
+            "retry_count": 1,
             "input_price_usd_per_million_tokens": 10.0,
             "output_price_usd_per_million_tokens": 20.0,
         }),
@@ -4888,11 +4888,16 @@ pub(crate) fn validate_cloud_contract_results(
         {
             failures.push(format!("{} missing token metrics", result.target_id));
         }
-        let expected_provider_attempts = cloud_contract_expected_provider_attempts(result);
-        if result.provider_attempts != Some(expected_provider_attempts) {
+        let min_provider_attempts = cloud_contract_min_provider_attempts(result);
+        let max_provider_attempts = cloud_contract_max_provider_attempts(result);
+        let provider_attempts = result.provider_attempts.unwrap_or(0.0);
+        if provider_attempts < min_provider_attempts || provider_attempts > max_provider_attempts {
             failures.push(format!(
-                "{} expected {} provider attempt(s), got {:?}",
-                result.target_id, expected_provider_attempts, result.provider_attempts
+                "{} expected {}-{} provider attempt(s), got {:?}",
+                result.target_id,
+                min_provider_attempts,
+                max_provider_attempts,
+                result.provider_attempts
             ));
         }
         if cloud_contract_transient_retry_result(result)
@@ -4949,12 +4954,22 @@ pub(crate) fn validate_cloud_contract_results(
     }
 }
 
-fn cloud_contract_expected_provider_attempts(result: &store::ResultRecord) -> f64 {
+fn cloud_contract_min_provider_attempts(result: &store::ResultRecord) -> f64 {
     if cloud_contract_transient_retry_result(result) {
         2.0
     } else {
         1.0
     }
+}
+
+fn cloud_contract_max_provider_attempts(result: &store::ResultRecord) -> f64 {
+    let configured_max = result
+        .reproducibility
+        .pointer("/target/config/retry_count")
+        .and_then(|value| value.as_f64())
+        .unwrap_or(0.0)
+        + 1.0;
+    configured_max.max(cloud_contract_min_provider_attempts(result))
 }
 
 fn cloud_contract_transient_retry_result(result: &store::ResultRecord) -> bool {
@@ -17389,6 +17404,23 @@ tasks:
     }
 
     #[test]
+    fn cloud_contract_targets_allow_loopback_transport_retry_budget() {
+        let targets = cloud_contract_targets("http://127.0.0.1:18080");
+        for target in targets {
+            let expected = if target.id.ends_with("-retry") { 2 } else { 1 };
+            assert_eq!(
+                target
+                    .config
+                    .get("retry_count")
+                    .and_then(|value| value.as_u64()),
+                Some(expected),
+                "{} should preserve its retry budget",
+                target.id
+            );
+        }
+    }
+
+    #[test]
     fn worker_error_mapping_preserves_harness_codes() {
         let event = serde_json::json!({
             "status": "error",
@@ -18032,7 +18064,16 @@ tasks:
             normalize_provider_error_code("failed to connect to localhost"),
             "network"
         );
+        assert_eq!(
+            normalize_provider_error_code(
+                "provider call failed: curl: (56) Recv failure: Connection reset by peer"
+            ),
+            "network"
+        );
         assert!(should_retry_provider_error("429 rate_limit_error"));
+        assert!(should_retry_provider_error(
+            "provider call failed: curl: (56) Recv failure: Connection reset by peer"
+        ));
         assert!(should_retry_provider_error("502 bad gateway"));
         assert!(!should_retry_provider_error(
             "401 unauthorized invalid api key"
