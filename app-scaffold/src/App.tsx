@@ -593,7 +593,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const compareAllTitle = activeRunInProgress
     ? 'A benchmark job is already running'
     : compareAllAvailable
-      ? `Open Run Builder with all ${allComparableTargetIds.length} comparable local/priced cloud targets${skippedUnpricedCloudTargetIds.length ? `; skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}` : ''}`
+      ? `Validate and run all ${allComparableTargetIds.length} comparable local/priced cloud targets${skippedUnpricedCloudTargetIds.length ? `; skips unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}` : ''}`
       : 'Add more comparable local or priced cloud targets before comparing all models';
   const reliabilityComparisonDisabled = busy || activeRunInProgress || !comparisonReady || comparisonNeedsPricing || !hasReliabilityPack;
   function openLocalRuntimeDetection() {
@@ -603,8 +603,12 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   function openCloudTargetSetup() {
     openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: recommendedComparisonPack });
   }
-  async function runDashboardComparison(benchmarkPackId: string) {
-    const intent = localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId);
+  async function runDashboardComparison(
+    benchmarkPackId: string,
+    targetIds = recommendedTargetIds,
+    scopeLabelOverride = '',
+  ) {
+    const intent = localCloudRunBuilderIntent(targetIds, benchmarkPackId);
     setBusy(true);
     try {
       setMessage(`Validating ${intent.targetIds.length} target(s) before starting ${benchmarkPackLabel(benchmarkPackId)}`);
@@ -617,7 +621,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         return;
       }
       const warningNote = validationResults.some(result => result.status !== 'ok') ? `; warnings: ${formatValidationCodeCounts(validationResults.filter(result => result.status !== 'ok'))}` : '';
-      const scopeNote = allComparableTargetIds.length > intent.targetIds.length ? 'recommended pair' : 'local/cloud comparison';
+      const scopeNote = scopeLabelOverride || (allComparableTargetIds.length > intent.targetIds.length ? 'recommended pair' : 'local/cloud comparison');
       const skippedPricingNote = skippedUnpricedCloudTargetIds.length ? `. Skipped unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}` : '';
       setMessage(`Starting ${benchmarkPackLabel(benchmarkPackId)} ${scopeNote} with ${intent.targetIds.length} target(s), ${intent.repetitions} repetitions, ${intent.warmupRuns} warmup, ${formatCost(intent.maxCostUsd ?? defaultComparisonMaxCostUsd)} cap${warningNote}${skippedPricingNote}`);
       const job = await startRunJob(
@@ -632,16 +636,16 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       await refresh();
       if (isJobActive(job)) {
         setPage('runs');
-        setMessage(`Started local/cloud comparison job ${job.id.slice(0, 8)} with ${job.total} planned run(s)`);
+        setMessage(`Started ${scopeNote} job ${job.id.slice(0, 8)} with ${job.total} planned run(s)`);
         return;
       }
       if (job.results.length || job.status === 'completed') {
         setPage('results');
-        setMessage(`${job.completed}/${job.total} local/cloud benchmark task runs completed`);
+        setMessage(`${job.completed}/${job.total} ${scopeNote} benchmark task runs completed`);
         return;
       }
       setPage('runs');
-      setMessage(job.message || `Local/cloud comparison job ${job.id.slice(0, 8)} finished without stored results`);
+      setMessage(job.message || `${scopeNote} job ${job.id.slice(0, 8)} finished without stored results`);
     } catch (error) {
       setMessage(benchmarkRunFailureMessage(error));
       openRunBuilder(intent);
@@ -688,10 +692,9 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       setMessage('Add at least one local model and one priced cloud model before comparing every target');
       return;
     }
-    const intent = localCloudRunBuilderIntent(allComparableTargetIds, recommendedComparisonPack);
-    openRunBuilder(intent);
     const skippedPricingNote = skippedUnpricedCloudTargetIds.length ? ` Skipped unpriced cloud target(s): ${previewList(skippedUnpricedCloudTargetIds)}.` : '';
-    setMessage(`Run Builder ready to compare all ${allComparableTargetIds.length} comparable local/cloud target(s) with ${benchmarkPackLabel(recommendedComparisonPack)}, 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap.${skippedPricingNote}`);
+    setMessage(`Starting all comparable local/cloud target(s) with ${benchmarkPackLabel(recommendedComparisonPack)}, 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap.${skippedPricingNote}`);
+    void runDashboardComparison(recommendedComparisonPack, allComparableTargetIds, 'all comparable local/cloud comparison');
   }
   function openSkippedCloudPricing() {
     openTargetRepair({ targetIds: skippedUnpricedCloudTargetIds, code: 'pricing_assumption' });
