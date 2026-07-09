@@ -1,6 +1,6 @@
 # BenchForge Roadmap
 
-BenchForge should become a real desktop benchmark tool for local and cloud LLMs. The honest state is that the project has a working app foundation and several real pieces, but it is not yet a trustworthy evaluator for day-to-day model selection. This roadmap defines the work required to get there.
+BenchForge is becoming a real desktop benchmark tool for local and cloud LLMs. The app now has verified end-to-end local/cloud benchmark paths, but it should still be treated as a pre-1.0 engineering workbench rather than a public leaderboard. This roadmap defines the remaining work required to make it broadly trustworthy for day-to-day model selection.
 
 ## Definition of Real
 
@@ -26,6 +26,7 @@ Working or partially working:
 - Prompt packs (`llm-connectivity`, `llm-basics`, `llm-core`, `llm-practical`, `llm-decision-suite`, `llm-structured-output`, `llm-grounded-context`, `llm-reliability`) and quick-smoke code tasks can run and persist results.
 - Run jobs support progress, cancellation, retry, duplicate, grouped results, and exports.
 - Redacted backend panic/frontend error diagnostics are recorded under `.benchforge/diagnostics` and surfaced in Doctor.
+- Latest full local release-readiness verification passed on 2026-07-09 with `make benchmark-readiness-full`, including clean first-run, provider contracts, Hugging Face GGUF search/download/start, local/cloud benchmarks, report export, unsigned DMG packaging, installed-app smoke, and local server cleanup. `make live-cloud-smoke` also skipped safely because no real provider keys were configured.
 
 Not good enough yet:
 
@@ -34,7 +35,7 @@ Not good enough yet:
 - Provider clients have stronger offline rate-limit and retry contracts now, but still need deeper live provider-specific streaming, retry, and cost coverage.
 - Result analysis needs broader comparison workflows, but visible results now include metric coverage, an explicit comparison evidence grade, Wilson pass-rate intervals, task-target repetition warnings, exact pack/task-slot coverage warnings, and pricing-assumption warnings for cost evidence.
 - Code/agent benchmarks have a safer worker bridge and basic result import support, but still need broader hardened imports for full benchmark-suite handoff.
-- The app needs first-run onboarding, clearer failure recovery, and repeatable verification on clean machines.
+- Clean-machine verification is repeatable through the full readiness and installed-DMG smoke gates, but distribution still needs signed/notarized release validation and more real-machine install coverage.
 
 ## Milestone 1: Reliable Target Setup
 

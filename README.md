@@ -46,6 +46,8 @@ Use it today as an engineering benchmark harness. Do not treat bundled packs as 
 
 The Vite browser build is only a frontend preview. Keychain storage, downloads, provider calls, subprocesses, benchmark execution, and packaging require the Tauri desktop app.
 
+Latest local release-readiness verification: `make benchmark-readiness-full` passed on 2026-07-09, covering clean first-run, local/cloud contracts, Hugging Face GGUF search/download/start, report export, unsigned DMG packaging, installed-app smoke, and local server cleanup. The default no-spend `make live-cloud-smoke` also skipped safely when no real provider keys were configured.
+
 There is no stable release channel yet. For now, install from source with the commands below or build a local DMG from this checkout.
 
 ## What BenchForge Benchmarks
@@ -458,7 +460,7 @@ Near-term priorities:
 - Deepen local runtime lifecycle management beyond the managed `llama.cpp` path.
 - Expand live provider coverage for streaming, pricing, retries, and provider-specific edge cases.
 - Harden worker imports and Docker/Colima sandboxing for code and agent benchmarks.
-- Improve clean-machine onboarding, packaging, and distribution signing.
+- Keep clean-machine onboarding and packaging verified while adding signed/notarized distribution coverage.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full milestone plan.
 
