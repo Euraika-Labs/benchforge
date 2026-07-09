@@ -484,7 +484,7 @@ export default function App() {
   const content = useMemo(() => {
     switch (page) {
       case 'targets':
-        return <Targets targets={targets} adapters={adapters} packs={packs} onRefresh={refresh} setMessage={setMessage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} repairIntent={targetRepairIntent} onRepairIntentConsumed={() => setTargetRepairIntent(null)} setupIntent={targetSetupIntent} onSetupIntentConsumed={() => setTargetSetupIntent(null)} />;
+        return <Targets targets={targets} adapters={adapters} packs={packs} checks={checks} onRefresh={refresh} setMessage={setMessage} openRunBuilder={openRunBuilder} openResultsForGroup={openResultsForGroup} repairIntent={targetRepairIntent} onRepairIntentConsumed={() => setTargetRepairIntent(null)} setupIntent={targetSetupIntent} onSetupIntentConsumed={() => setTargetSetupIntent(null)} />;
       case 'benchmarks':
         return <Benchmarks packs={packs} diagnostics={packDiagnostics} onRefresh={refresh} setMessage={setMessage} />;
       case 'runs':
@@ -1603,9 +1603,11 @@ function formValueFromUnknown(value: unknown, fallback = '') {
   return fallback;
 }
 
-function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuilder, openResultsForGroup, repairIntent, onRepairIntentConsumed, setupIntent, onSetupIntentConsumed }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; onRefresh: () => Promise<void>; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; repairIntent: TargetRepairIntent | null; onRepairIntentConsumed: () => void; setupIntent: TargetSetupIntent | null; onSetupIntentConsumed: () => void }) {
+function Targets({ targets, adapters, packs, checks, onRefresh, setMessage, openRunBuilder, openResultsForGroup, repairIntent, onRepairIntentConsumed, setupIntent, onSetupIntentConsumed }: { targets: Target[]; adapters: Adapter[]; packs: BenchmarkPack[]; checks: DoctorCheck[]; onRefresh: () => Promise<void>; setMessage: (message: string) => void; openRunBuilder: (intent: RunBuilderIntent) => void; openResultsForGroup: (groupId: string, runId?: string) => void; repairIntent: TargetRepairIntent | null; onRepairIntentConsumed: () => void; setupIntent: TargetSetupIntent | null; onSetupIntentConsumed: () => void }) {
   const runnableAdapters = adapters.filter(adapter => ['openai_compatible', 'openai_responses', 'anthropic_messages', 'mistral_api', 'azure_openai'].includes(adapter.kind));
+  const preferredDirectSetupAdapterId = usePreferredCloudSetupAdapterId(adapters, checks);
   const [adapterId, setAdapterId] = useState('');
+  const [adapterAutoSelected, setAdapterAutoSelected] = useState(false);
   const [modelPresetId, setModelPresetId] = useState('custom');
   const [targetName, setTargetName] = useState('');
   const [model, setModel] = useState('');
@@ -1663,12 +1665,6 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [loadingTargetId, setLoadingTargetId] = useState('');
   const [duplicatingTargetId, setDuplicatingTargetId] = useState('');
 
-  useEffect(() => {
-    if (!adapterId && runnableAdapters[0]) {
-      selectAdapter(runnableAdapters[0].id, { prefillFirstPreset: true });
-    }
-  }, [adapterId, runnableAdapters]);
-
   const selectedAdapter = runnableAdapters.find(adapter => adapter.id === adapterId);
   const modelPresets = useMemo(() => adapterModelPresets(selectedAdapter), [selectedAdapter]);
   const selectedModelPreset = modelPresets.find(preset => preset.id === modelPresetId);
@@ -1691,6 +1687,20 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     : [];
   const comparisonNeedsCloudPricing = Boolean(localComparisonTargetIds.length && cloudComparisonTargets.length && !pricedCloudComparisonTargetIds.length);
   const comparisonActionDisabled = !localComparisonTargetIds.length || !cloudComparisonTargets.length;
+
+  useEffect(() => {
+    if (setupIntent || editingTargetId || editingHarnessTargetId) {
+      return;
+    }
+    const preferred = runnableAdapters.find(adapter => adapter.id === preferredDirectSetupAdapterId);
+    const nextAdapterId = preferred?.id ?? runnableAdapters[0]?.id ?? '';
+    if (!nextAdapterId) {
+      return;
+    }
+    if (!adapterId || (adapterAutoSelected && adapterId !== nextAdapterId)) {
+      selectAdapter(nextAdapterId, { prefillFirstPreset: true, autoSelected: true });
+    }
+  }, [adapterId, adapterAutoSelected, editingHarnessTargetId, editingTargetId, preferredDirectSetupAdapterId, runnableAdapters, setupIntent]);
 
   useEffect(() => {
     if (!modelBenchmarkPacks.length || modelBenchmarkPacks.some(pack => pack.id === comparisonPackId)) {
@@ -1831,9 +1841,10 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     };
   }, [selectedAdapter?.id, selectedProviderKeychainId, needsApiKey]);
 
-  function selectAdapter(nextId: string, options: { prefillFirstPreset?: boolean } = {}) {
+  function selectAdapter(nextId: string, options: { prefillFirstPreset?: boolean; autoSelected?: boolean } = {}) {
     const next = runnableAdapters.find(adapter => adapter.id === nextId);
     setAdapterId(nextId);
+    setAdapterAutoSelected(Boolean(options.autoSelected));
     setEditingTargetPreserveApiKeyRef(false);
     setEditingTargetPreserveApiKeyEnvRef(false);
     setBaseUrl(next?.defaultBaseUrl ?? '');
@@ -2239,6 +2250,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setEditingTargetId('');
     setTargetName('');
     setAdapterId(adapter?.id ?? '');
+    setAdapterAutoSelected(false);
     setBaseUrl(adapter?.defaultBaseUrl ?? '');
     setApiKey('');
     setApiKeyEnv('');
@@ -2321,6 +2333,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       setEditingTargetPreserveApiKeyEnvRef(config.api_key_env === '[REDACTED]');
       setEditingTargetPendingAutoBenchmarkPackId(options.pendingAutoBenchmarkPackId ?? '');
       setAdapterId(adapter.id);
+      setAdapterAutoSelected(false);
       setTargetName(exported.name);
       setModel(modelValue);
       setBaseUrl(formValueFromUnknown(config.base_url, adapter.defaultBaseUrl ?? ''));
