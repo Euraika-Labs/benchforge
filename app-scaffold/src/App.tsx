@@ -910,7 +910,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         <button onClick={openLocalRuntimeDetection}><Search size={14} />Detect runtime</button>
         <button onClick={openHuggingFaceLocalModelSetup}><Settings size={14} />Local model</button>
         <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
-        <button disabled={busy || activeRunInProgress || !liveCloudTargetIds.length} title={liveCloudTargetIds.length ? `Validate ${liveCloudTargetIds.length} configured cloud target(s) with real provider probes` : 'Add a cloud target before validating live provider access'} onClick={() => validateDashboardCloudTargets().catch(error => setMessage(String(error)))}><ShieldCheck size={14} />Validate cloud</button>
+        <button disabled={busy || activeRunInProgress} title={liveCloudTargetIds.length ? `Validate ${liveCloudTargetIds.length} configured cloud target(s) with real provider probes` : 'Add a cloud target before validating live provider access'} onClick={() => validateDashboardCloudTargets().catch(error => setMessage(String(error)))}><ShieldCheck size={14} />{liveCloudTargetIds.length ? 'Validate cloud' : 'Add cloud target'}</button>
         <button disabled={primaryBenchmarkActionDisabled} title={primaryBenchmarkActionTitle} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
         <button disabled={compareAllDisabled} title={compareAllTitle} onClick={openAllComparisonRun}><ClipboardCheck size={14} />Compare all</button>
         <button disabled={reliabilityComparisonDisabled} title={reliabilityComparisonTitle} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
@@ -6177,6 +6177,7 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
   const setupLocalTargetIds = recommendedTargets.setupLocalTargetIds;
   const setupCloudTargetIds = recommendedTargets.setupCloudTargetIds;
   const pricingRepairTargetIds = recommendedTargets.pricingRepairTargetIds;
+  const liveCloudTargetIds = targets.filter(target => targetIsSelectableModel(target) && isCloudModelTarget(target)).map(target => target.id);
   const recommendedPack = recommendedComparisonPackId(packs);
   const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
   const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters, checks);
@@ -6241,6 +6242,37 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
     await navigator.clipboard.writeText(check.command);
     setMessage(`Copied ${check.label} command/path`);
   }
+  async function validateDoctorCloudTargets() {
+    if (!liveCloudTargetIds.length) {
+      openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedPack, targetIds: setupLocalTargetIds });
+      setMessage('Add a cloud target before running live cloud validation');
+      return;
+    }
+    setActionBusy('validate-cloud-targets');
+    setBusy(true);
+    try {
+      setMessage(`Validating ${liveCloudTargetIds.length} cloud target(s) with live provider probes`);
+      const validationResults = await Promise.all(liveCloudTargetIds.map(id => validateTarget(id)));
+      await onRefresh();
+      const blockers = validationResults.filter(result => result.status === 'error');
+      if (blockers.length) {
+        openTargetRepair({ targetIds: blockers.map(blocker => blocker.targetId), code: validationRepairCode(blockers[0]) });
+        setMessage(`Cloud validation found ${formatValidationCodeCounts(blockers)}. Fix the affected target before running live comparisons.`);
+        return;
+      }
+      const warnings = validationResults.filter(result => result.status !== 'ok');
+      if (warnings.length) {
+        setMessage(`Cloud validation finished with warnings: ${formatValidationCodeCounts(warnings)}`);
+        return;
+      }
+      setMessage(`Validated ${validationResults.length} cloud target(s); Doctor refreshed with live cloud evidence.`);
+    } catch (error) {
+      setMessage(`Cloud validation failed: ${String(error)}`);
+    } finally {
+      setActionBusy('');
+      setBusy(false);
+    }
+  }
   return <section>
     <div className="section-head"><h1>Doctor</h1><div className="actions">{installableLocalMissing ? <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={16} />Install local tools</button> : null}<button disabled={Boolean(actionBusy)} onClick={() => onRefresh()}><RefreshCw size={16} />Run</button></div></div>
     <div className="doctor-summary">
@@ -6260,7 +6292,7 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
         <td><span className={`pill ${c.status}`}>{c.status}</span></td>
         <td>{c.detail}</td>
         <td className="doctor-remediation">{c.remediation || '-'}</td>
-        <td>{doctorAction(c, targets, cloudSetupAdapterId, recommendedPack, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup, openHuggingFaceLocalSetup)}</td>
+        <td>{doctorAction(c, targets, cloudSetupAdapterId, recommendedPack, actionBusy, installLocalModelTools, validateDoctorCloudTargets, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup, openHuggingFaceLocalSetup)}</td>
         <td className="doctor-command">{c.command ? <div className="doctor-command-cell"><code>{c.command}</code><button title="Copy command or path" onClick={() => copyDoctorCommand(c).catch(error => setMessage(String(error)))}><Copy size={14} /></button></div> : '-'}</td>
       </tr>)}</tbody>
     </table>
@@ -6441,8 +6473,9 @@ function cloudKeyDoctorAdapterId(check: DoctorCheck) {
   return check.id.startsWith('cloud-key-') ? check.id.slice('cloud-key-'.length) : '';
 }
 
-function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId: string, benchmarkPackId: string, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void, openHuggingFaceLocalSetup: (intent?: Omit<HuggingFaceLocalSetupIntent, 'nonce'>) => void) {
+function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId: string, benchmarkPackId: string, actionBusy: string, installLocalModelTools: () => Promise<void>, validateCloudTargets: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void, openHuggingFaceLocalSetup: (intent?: Omit<HuggingFaceLocalSetupIntent, 'nonce'>) => void) {
   const recommendedTargets = dashboardLocalCloudComparisonTargets(targets);
+  const liveCloudTargetCount = targets.filter(target => targetIsSelectableModel(target) && isCloudModelTarget(target)).length;
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
@@ -6497,9 +6530,7 @@ function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId
     return <button onClick={() => setPage('benchmarks')}><FlaskConical size={14} />Packs</button>;
   }
   if (check.id === 'product-live-cloud') {
-    return <button onClick={() => {
-      openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId, targetIds: recommendedTargets.setupLocalTargetIds });
-    }}><Boxes size={14} />Cloud</button>;
+    return <button disabled={Boolean(actionBusy)} title={liveCloudTargetCount ? `Validate ${liveCloudTargetCount} cloud target(s)` : 'Add a cloud target before validating live provider access'} onClick={() => validateCloudTargets().catch(error => setMessage(String(error)))}>{liveCloudTargetCount ? <ShieldCheck size={14} /> : <Boxes size={14} />}{liveCloudTargetCount ? 'Validate' : 'Cloud'}</button>;
   }
   if (check.id === 'docker' || check.id === 'colima') {
     return <button onClick={() => setPage('runs')}><ShieldCheck size={14} />Runs</button>;

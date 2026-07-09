@@ -274,7 +274,7 @@ After adding a target, run Validate before benchmarking. Validation records heal
 6. Choose a benchmark pack and repetitions. Advanced run settings include warmups, concurrency, Docker scoring, and a max-cost cap. BenchForge blocks capped cloud runs when pricing is missing.
 7. Run the benchmark and compare results by target, provider, model, pack, task, run group, and status.
 
-The Dashboard also has a **Validate cloud** action. Use it after saving cloud keys or targets to run live provider probes and make product-readiness evidence visible before you start a paid comparison.
+The Dashboard and Doctor also have **Validate cloud** actions. Use them after saving cloud keys or targets to run live provider probes and make product-readiness evidence visible before you start a paid comparison.
 
 Live provider probes are outside the default readiness gate and skip cleanly when no provider key is configured.
 
