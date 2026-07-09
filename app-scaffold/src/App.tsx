@@ -145,6 +145,7 @@ interface TargetRepairIntent {
 
 interface TargetSetupIntent {
   adapterId?: string;
+  benchmarkPackId?: string;
   code: string;
   nonce: number;
 }
@@ -586,11 +587,11 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
       : 'Add more comparable local or priced cloud targets before comparing all models';
   const reliabilityComparisonDisabled = busy || activeRunInProgress || !comparisonReady || comparisonNeedsPricing || !hasReliabilityPack;
   function openLocalRuntimeDetection() {
-    openTargetSetup({ code: 'local_runtime_detect' });
+    openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedComparisonPack });
     setMessage('Detecting local runtimes from Dashboard');
   }
   function openCloudTargetSetup() {
-    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
+    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: recommendedComparisonPack });
   }
   async function runDashboardComparison(benchmarkPackId: string) {
     const intent = localCloudRunBuilderIntent(recommendedTargetIds, benchmarkPackId);
@@ -1489,11 +1490,15 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     if (!setupIntent) {
       return;
     }
+    const setupBenchmarkPackId = resolveModelBenchmarkPackId(setupIntent.benchmarkPackId, modelBenchmarkPacks, packs);
     if (setupIntent.code === 'local_runtime_detect') {
       onSetupIntentConsumed();
       clearTargetForm();
       clearHarnessForm();
-      setMessage('Detecting local runtimes from Doctor');
+      setAutoBenchmarkAfterAdd(true);
+      setAutoBenchmarkPackId(setupBenchmarkPackId);
+      setComparisonPackId(setupBenchmarkPackId);
+      setMessage(`Detecting local runtimes. Automatic benchmark after add will use ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)}.`);
       void detectLocal().catch(error => setMessage(String(error)));
       return;
     }
@@ -1513,13 +1518,17 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     }
     clearTargetForm();
     clearHarnessForm();
+    setAutoBenchmarkAfterAdd(true);
+    setAutoBenchmarkPackId(setupBenchmarkPackId);
+    setComparisonPackId(setupBenchmarkPackId);
     const defaultPreset = selectAdapter(adapter.id, { prefillFirstPreset: true });
     const presetHint = defaultPreset
       ? `; ${defaultPreset.label} is prefilled with pricing, so you can add the target or search for another model`
       : '; search the catalog or enter a model manually';
     const actionHint = setupIntent.code === 'missing_key' ? 'Paste the API key' : 'Review the provider setup';
-    setMessage(`${actionHint} for ${adapter.name}${presetHint}.`);
-  }, [setupIntent, runnableAdapters, onSetupIntentConsumed, setMessage]);
+    const packHint = ` Automatic benchmark after add will use ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)}.`;
+    setMessage(`${actionHint} for ${adapter.name}${presetHint}.${packHint}`);
+  }, [setupIntent, runnableAdapters, modelBenchmarkPacks, packs, onSetupIntentConsumed, setMessage]);
 
   useEffect(() => {
     if (!selectedAdapter || !needsApiKey) {
@@ -3275,6 +3284,8 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const activeJob = jobs.find(job => job.id === activeJobId);
   const activeRunInProgress = Boolean(activeJob && isJobActive(activeJob));
   const selectedPack = packs.find(pack => pack.id === selectedPackId);
+  const modelBenchmarkPacks = useMemo(() => modelBenchmarkPackOptions(packs), [packs]);
+  const setupBenchmarkPackId = resolveModelBenchmarkPackId(selectedPackId, modelBenchmarkPacks, packs);
   const incompatibleSelectedTargets = selectedPack
     ? targets.filter(target => selected.includes(target.id) && !targetCompatibleWithPack(target, selectedPack))
     : [];
@@ -3661,12 +3672,12 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     setMessage(`Add input/output pricing before running a capped local/cloud comparison: ${previewList(targetIds)}`);
   }
   function openLocalSetupFromRunBuilder() {
-    openTargetSetup({ code: 'local_runtime_detect' });
-    setMessage('Detecting local runtimes for this local/cloud comparison');
+    openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: setupBenchmarkPackId });
+    setMessage(`Detecting local runtimes for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
   }
   function openCloudSetupFromRunBuilder() {
-    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
-    setMessage('Preparing cloud target setup for this local/cloud comparison');
+    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: setupBenchmarkPackId });
+    setMessage(`Preparing cloud target setup for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
   }
   async function cancelRun(id: string) {
     setMessage(`Cancelling run job ${id.slice(0, 8)}`);
@@ -4722,12 +4733,12 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
       }
     }
     if (check.command.startsWith('Settings') && localRuntimeCheck.check.status === 'ok') {
-      openTargetSetup({ code: 'local_runtime_detect' });
+      openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: recommendedPack });
       setMessage('Detecting local runtimes for the next benchmark step');
       return;
     }
     if (check.command.startsWith('Targets')) {
-      openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
+      openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: recommendedPack });
       setMessage('Preparing cloud target setup for the next benchmark step');
       return;
     }
@@ -4779,7 +4790,7 @@ function Doctor({ checks, diagnostics, targets, adapters, packs, onRefresh, setB
         <td><span className={`pill ${c.status}`}>{c.status}</span></td>
         <td>{c.detail}</td>
         <td className="doctor-remediation">{c.remediation || '-'}</td>
-        <td>{doctorAction(c, targets, adapters, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup)}</td>
+        <td>{doctorAction(c, targets, adapters, recommendedPack, actionBusy, installLocalModelTools, setPage, setMessage, openBenchmarkStep, openTargetRepair, openTargetSetup)}</td>
         <td className="doctor-command">{c.command ? <div className="doctor-command-cell"><code>{c.command}</code><button title="Copy command or path" onClick={() => copyDoctorCommand(c).catch(error => setMessage(String(error)))}><Copy size={14} /></button></div> : '-'}</td>
       </tr>)}</tbody>
     </table>
@@ -4924,7 +4935,7 @@ function cloudKeyDoctorAdapterId(check: DoctorCheck) {
   return check.id.startsWith('cloud-key-') ? check.id.slice('cloud-key-'.length) : '';
 }
 
-function doctorAction(check: DoctorCheck, targets: Target[], adapters: Adapter[], actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
+function doctorAction(check: DoctorCheck, targets: Target[], adapters: Adapter[], benchmarkPackId: string, actionBusy: string, installLocalModelTools: () => Promise<void>, setPage: (page: Page) => void, setMessage: (message: string) => void, openBenchmarkStep: (check: DoctorCheck) => void, openTargetRepair: (intent: Omit<TargetRepairIntent, 'nonce'>) => void, openTargetSetup: (intent: Omit<TargetSetupIntent, 'nonce'>) => void) {
   if (isLocalModelToolCheck(check) && check.status !== 'ok') {
     return <button disabled={Boolean(actionBusy)} onClick={() => installLocalModelTools().catch(error => setMessage(String(error)))}><Wrench size={14} />Install</button>;
   }
@@ -4934,12 +4945,12 @@ function doctorAction(check: DoctorCheck, targets: Target[], adapters: Adapter[]
   if (check.id.startsWith('cloud-key-')) {
     const adapterId = cloudKeyDoctorAdapterId(check);
     return <button onClick={() => {
-      openTargetSetup({ adapterId, code: 'missing_key' });
+      openTargetSetup({ adapterId, code: 'missing_key', benchmarkPackId });
     }}><Settings size={14} />Key</button>;
   }
   if (check.id.startsWith('endpoint-')) {
     return <button onClick={() => {
-      openTargetSetup({ code: 'local_runtime_detect' });
+      openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId });
     }}><Search size={14} />Detect</button>;
   }
   if (check.id === 'benchmark-target-local') {
@@ -4958,7 +4969,7 @@ function doctorAction(check: DoctorCheck, targets: Target[], adapters: Adapter[]
       if (repair) {
         openReadinessTargetRepair(targets, 'cloud', openTargetRepair, setMessage);
       } else {
-        openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
+        openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId });
       }
     }}>{repair ? <Wrench size={14} /> : <Settings size={14} />}{repair ? 'Repair' : 'Cloud'}</button>;
   }
@@ -7801,6 +7812,17 @@ function benchmarkPackLabel(packId: string, options: BenchmarkPackOption[] = fal
   return options.find(pack => pack.id === packId)?.label ?? packId;
 }
 
+function resolveModelBenchmarkPackId(requestedPackId: string | undefined, options: BenchmarkPackOption[], packs: BenchmarkPack[]) {
+  if (requestedPackId && options.some(pack => pack.id === requestedPackId)) {
+    return requestedPackId;
+  }
+  const recommendedPackId = recommendedComparisonPackId(packs);
+  if (options.some(pack => pack.id === recommendedPackId)) {
+    return recommendedPackId;
+  }
+  return options[0]?.id ?? defaultModelComparisonPackId;
+}
+
 function automaticModelBenchmarkSettings(packId: string) {
   if (packId === connectivityBenchmarkPackId) {
     return { repetitions: 1, warmupRuns: 0, concurrency: 1 };
@@ -8422,7 +8444,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
       setMessage(`Add input/output pricing before automatic local/cloud comparison: ${previewList(unpricedCloudComparisonTargetIds)}`);
       return;
     }
-    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key' });
+    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: autoBenchmarkPackId });
   }
 
   async function refreshHf() {
