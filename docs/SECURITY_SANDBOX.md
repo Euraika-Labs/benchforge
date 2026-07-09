@@ -189,6 +189,18 @@ Defensive security evals are in scope by default:
 
 Offensive exploit generation and real target exploitation are out of scope for default packs.
 
+## Dependency advisory policy
+
+BenchForge's supported desktop release target is macOS. CI, packaging, Keychain storage, DMG verification, and install smoke tests run against macOS. Cargo may still record target-specific Linux webview dependencies in `Cargo.lock` because Tauri supports multiple platforms upstream.
+
+When Dependabot flags a target-specific dependency that is not in the supported macOS build graph, verify it before dismissing the alert:
+
+```bash
+make dependency-audit
+```
+
+The audit currently checks both Apple Silicon and Intel macOS target graphs for the `glib` advisory `GHSA-wrw7-89jp-8q8g`. If BenchForge adds supported Linux desktop builds later, remove this exception and update the Tauri/Linux webview stack before release.
+
 ## Security acceptance criteria
 
 - Running the smoke benchmark cannot modify files outside the workspace.

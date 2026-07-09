@@ -369,6 +369,7 @@ Run these from the repository root.
 | `make dev` | Start the Tauri desktop app in development mode. |
 | `make test` | Run schema validation, web build, Rust tests, Python worker tests, and worker CLI help. |
 | `make benchmark-readiness` | Offline readiness gate for local/cloud benchmarking, worker harness imports, and report evidence. |
+| `make dependency-audit` | Verify target-specific dependency advisory exceptions against the supported macOS build graph. |
 | `make benchmark-readiness-full` | Extended gate before packaging or handoff. |
 | `make live-cloud-smoke` | Optional real-provider validation and tiny benchmark path. |
 | `make first-run-smoke` | Verify a clean app store using a temporary `BENCHFORGE_DATA_DIR`. |
