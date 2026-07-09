@@ -1297,6 +1297,33 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertIn("unsupported result file type", event["error_message"])
             self.assertIn(".jsonl", event["error_message"])
 
+    def test_worker_rejects_symlinked_direct_import_path(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            real_result = temp_dir / "real-summary.json"
+            real_result.write_text(json.dumps({"total": 1, "passed": 1, "failed": 0}), encoding="utf-8")
+            imported = temp_dir / "summary-link.json"
+            self.symlink_or_skip(imported, real_result)
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "evalplus",
+                "--import-path",
+                str(imported),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 2)
+            event = self.final_event(output)
+            self.assertEqual(event["status"], "error")
+            self.assertEqual(event["error_code"], "import_invalid")
+            self.assertIn("must not be a symlink", event["error_message"])
+
     def test_worker_rejects_symlinked_file_in_import_directory(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir, tempfile.TemporaryDirectory() as outside_raw:
             temp_dir = Path(raw_dir)

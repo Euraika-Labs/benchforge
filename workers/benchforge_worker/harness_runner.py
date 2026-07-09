@@ -484,6 +484,11 @@ def imported_result_path(
     candidate = Path(formatted)
     if not candidate.is_absolute():
         candidate = workspace / candidate
+    if candidate.is_symlink():
+        raise HarnessConfigError(
+            "import_invalid",
+            f"{kind} import_path must not be a symlink; choose the real result file or directory",
+        )
     candidate = candidate.resolve()
     allowed_roots = [workspace.resolve(), output_dir.resolve()]
     if not any(path_is_relative_to(candidate, root) for root in allowed_roots):
