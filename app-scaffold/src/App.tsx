@@ -171,6 +171,13 @@ interface BenchmarkPackOption {
   label: string;
 }
 
+interface HfAutomaticHandoffStep {
+  label: string;
+  detail: string;
+  tone: 'ok' | 'warn' | 'unknown';
+  optional?: boolean;
+}
+
 const dateWindowOptions: { id: DateWindow; label: string }[] = [
   { id: 'all', label: 'All time' },
   { id: 'today', label: 'Today' },
@@ -8789,6 +8796,21 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
   const cloudComparisonNeedsPricing = Boolean(selectableCloudTargetCount && unpricedCloudComparisonTargetIds.length && !selectablePricedCloudTargetCount);
   const autoCompareReady = autoBenchmarkAfterStart && selectablePricedCloudTargetCount > 0;
   const cloudComparisonStatus = hfCloudComparisonStatus(selectableCloudTargetCount, selectablePricedCloudTargetCount);
+  const hfHandoffSteps = hfAutomaticHandoffSteps({
+    repoId: repoId.trim(),
+    selectedFile: filename || downloadPlan?.selectedFile || activeDownloadJob?.selectedFile || '',
+    hf,
+    autoStartAfterDownload,
+    autoBenchmarkAfterStart,
+    autoCompareAfterStart,
+    autoBenchmarkPackId,
+    modelBenchmarkPacks,
+    selectableCloudTargetCount,
+    selectablePricedCloudTargetCount,
+    port,
+    context,
+  });
+  const hfHandoffReady = hfHandoffSteps.every(step => step.tone === 'ok' || step.optional);
 
   function openCloudComparisonSetup() {
     if (cloudComparisonNeedsPricing) {
@@ -9214,7 +9236,10 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
       setDownloadProgress(progressFromDownloadJob(job));
       if (isDownloadJobActive(job)) {
         setActiveDownloadJobId(job.id);
-        setMessage(`Started download job ${job.id.slice(0, 8)} for ${plan.selectedFile}`);
+        const handoffNote = autoStartAfterDownload
+          ? hfBenchmarkHandoffNote(autoBenchmarkAfterStart, autoBenchmarkPackId, modelBenchmarkPacks, autoCompareReady && autoCompareAfterStart)
+          : '';
+        setMessage(`Started download job ${job.id.slice(0, 8)} for ${plan.selectedFile}${handoffNote}`);
       } else {
         await handleFinishedDownloadJob(job);
       }
@@ -9568,6 +9593,15 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
       </div> : null}
       <button disabled={busy || Boolean(hf?.hfCliAvailable && hf?.llamaServerAvailable)} onClick={installMissingTools}><Wrench size={16} />Install missing tools</button>
       {installLog ? <pre className="setup-log">{installLog}</pre> : null}
+      <div className="preflight-box hf-handoff-box">
+        <div className="panel-head"><h2>Automatic handoff</h2><span className={`pill ${hfHandoffReady ? 'ok' : 'warn'}`}>{hfHandoffReady ? 'ready' : 'needs input'}</span></div>
+        <div className="handoff-track">
+          {hfHandoffSteps.map(step => <span key={step.label} className={`handoff-step ${step.tone}`}>
+            <strong>{step.label}</strong>
+            <small>{step.detail}</small>
+          </span>)}
+        </div>
+      </div>
       <h2>Browse Hub Models</h2>
       <div className="browser-controls">
         <input value={modelQuery} onChange={event => setModelQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') browseModels().catch(error => setMessage(String(error))); }} placeholder="Search GGUF models, e.g. Qwen, Gemma, Mistral" />
@@ -9643,6 +9677,115 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
 
 function hfPythonReadyForSetup(hf: HuggingFaceStatus | null) {
   return Boolean(hf?.hfCliAvailable || hf?.pythonSupported);
+}
+
+function hfAutomaticHandoffSteps({
+  repoId,
+  selectedFile,
+  hf,
+  autoStartAfterDownload,
+  autoBenchmarkAfterStart,
+  autoCompareAfterStart,
+  autoBenchmarkPackId,
+  modelBenchmarkPacks,
+  selectableCloudTargetCount,
+  selectablePricedCloudTargetCount,
+  port,
+  context,
+}: {
+  repoId: string;
+  selectedFile: string;
+  hf: HuggingFaceStatus | null;
+  autoStartAfterDownload: boolean;
+  autoBenchmarkAfterStart: boolean;
+  autoCompareAfterStart: boolean;
+  autoBenchmarkPackId: string;
+  modelBenchmarkPacks: BenchmarkPackOption[];
+  selectableCloudTargetCount: number;
+  selectablePricedCloudTargetCount: number;
+  port: number;
+  context: number;
+}): HfAutomaticHandoffStep[] {
+  const steps: HfAutomaticHandoffStep[] = [
+    {
+      label: 'Download',
+      tone: repoId ? 'ok' : 'unknown',
+      detail: repoId ? `${repoId}${selectedFile ? ` / ${selectedFile}` : ' / auto-select GGUF'}` : 'Choose a GGUF repository',
+    },
+  ];
+  if (!autoStartAfterDownload) {
+    steps.push(
+      {
+        label: 'Start',
+        tone: 'unknown',
+        detail: 'Manual server start',
+        optional: true,
+      },
+      {
+        label: 'Target',
+        tone: 'unknown',
+        detail: 'Add after the server is running',
+        optional: true,
+      },
+    );
+  } else {
+    const llamaReady = Boolean(hf?.llamaServerAvailable);
+    steps.push(
+      {
+        label: 'Start',
+        tone: llamaReady ? 'ok' : 'warn',
+        detail: llamaReady ? `llama-server on port ${port}, ctx ${context}` : 'Install llama.cpp first',
+      },
+      {
+        label: 'Target',
+        tone: llamaReady ? 'ok' : 'warn',
+        detail: llamaReady ? 'Register and validate local target' : 'Waiting for llama-server',
+      },
+    );
+  }
+
+  if (!autoBenchmarkAfterStart) {
+    steps.push({
+      label: 'Benchmark',
+      tone: 'unknown',
+      detail: 'Manual run after target creation',
+      optional: true,
+    });
+  } else {
+    steps.push({
+      label: 'Benchmark',
+      tone: autoStartAfterDownload ? 'ok' : 'warn',
+      detail: benchmarkPackLabel(autoBenchmarkPackId, modelBenchmarkPacks),
+    });
+  }
+
+  if (!autoBenchmarkAfterStart || !autoCompareAfterStart) {
+    steps.push({
+      label: 'Cloud',
+      tone: 'unknown',
+      detail: 'Local-only handoff',
+      optional: true,
+    });
+  } else if (selectablePricedCloudTargetCount > 0) {
+    steps.push({
+      label: 'Cloud',
+      tone: 'ok',
+      detail: `${selectablePricedCloudTargetCount} priced target(s) available`,
+    });
+  } else if (selectableCloudTargetCount > 0) {
+    steps.push({
+      label: 'Cloud',
+      tone: 'warn',
+      detail: 'Add input/output pricing',
+    });
+  } else {
+    steps.push({
+      label: 'Cloud',
+      tone: 'warn',
+      detail: 'Add a cloud target',
+    });
+  }
+  return steps;
 }
 
 function hfDownloadActionLabel(downloadFailed: boolean, autoStartAfterDownload: boolean, autoBenchmarkAfterStart: boolean, compareWithCloud = false) {
