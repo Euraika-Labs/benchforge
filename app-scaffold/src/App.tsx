@@ -3938,7 +3938,12 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       return;
     }
     if (costLimitMessage) {
-      setMessage(costLimitMessage);
+      if (runEstimate?.unpricedTargets.length) {
+        repairRunPricingBlockers(runEstimate.unpricedTargets);
+      } else {
+        setRunAdvancedOpen(true);
+        setMessage(`${costLimitMessage}. Adjust Max cost USD, reduce targets/tasks/repetitions, or clear the cap for an intentional uncapped run.`);
+      }
       return;
     }
     setBusy(true);
