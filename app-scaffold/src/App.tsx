@@ -5052,16 +5052,22 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
         const checked = selected.includes(target.id);
         const compatible = targetCompatibleWithPack(target, selectedPack);
         const selectable = targetIsSelectableForRun(target);
+        const localModelTarget = isLocalModelTarget(target);
+        const cloudModelTarget = isCloudModelTarget(target);
+        const cloudPricingConfigured = cloudModelTarget && targetHasInputOutputPricing(target);
         const disabled = (!compatible && !checked) || (!selectable && !checked);
         const targetHint = !selectable
           ? 'Target is invalid or disabled; validate or edit it before adding it to a run.'
           : compatible
-            ? `${target.kind} target`
+            ? runBuilderTargetHint(target, localModelTarget, cloudModelTarget, cloudPricingConfigured)
             : `Not supported by ${selectedPack?.name ?? 'selected pack'}`;
         return <label key={target.id} className={compatible && selectable ? '' : 'incompatible-target'} title={targetHint}>
           <input type="checkbox" disabled={disabled} checked={checked} onChange={event => setSelected(event.target.checked ? [...selected, target.id] : selected.filter(id => id !== target.id))} />
           <span>{target.name}</span>
           <span className="mini-tag">{target.kind}</span>
+          {localModelTarget ? <span className="mini-tag">local</span> : null}
+          {cloudModelTarget ? <span className="mini-tag">cloud</span> : null}
+          {cloudModelTarget ? <span className={`mini-tag ${cloudPricingConfigured ? '' : 'warn'}`}>{cloudPricingConfigured ? 'priced' : 'needs pricing'}</span> : null}
           {!selectable ? <span className="mini-tag warn">not runnable</span> : null}
           {!compatible ? <span className="mini-tag warn">not for pack</span> : null}
         </label>;
@@ -5152,6 +5158,18 @@ function targetShortcutHelp(label: string, targetIds: string[], unpricedCloudTar
   return includesCloudTarget
     ? `Select ${label} and set a ${formatCost(defaultComparisonMaxCostUsd)} max-cost cap`
     : `Select ${label}`;
+}
+
+function runBuilderTargetHint(target: Target, localModelTarget: boolean, cloudModelTarget: boolean, cloudPricingConfigured: boolean) {
+  if (localModelTarget) {
+    return `${target.kind} local model target`;
+  }
+  if (cloudModelTarget) {
+    return cloudPricingConfigured
+      ? `${target.kind} cloud model target with input/output pricing for capped cost estimates`
+      : `${target.kind} cloud model target. Add input/output pricing before capped local/cloud comparisons.`;
+  }
+  return `${target.kind} target`;
 }
 
 function localCloudShortcutHelp(
