@@ -274,6 +274,8 @@ After adding a target, run Validate before benchmarking. Validation records heal
 6. Choose a benchmark pack and repetitions. Advanced run settings include warmups, concurrency, Docker scoring, and a max-cost cap. BenchForge blocks capped cloud runs when pricing is missing.
 7. Run the benchmark and compare results by target, provider, model, pack, task, run group, and status.
 
+The Dashboard also has a **Validate cloud** action. Use it after saving cloud keys or targets to run live provider probes and make product-readiness evidence visible before you start a paid comparison.
+
 Live provider probes are outside the default readiness gate and skip cleanly when no provider key is configured.
 
 ```bash
@@ -399,7 +401,7 @@ Use focused `make *-smoke` targets when changing a specific workflow. Use `make 
 Readiness targets are time-bounded by default: 15 minutes per target for quick mode and 30 minutes for full mode. Set `BENCHFORGE_READINESS_TARGET_TIMEOUT_SECONDS=0` to disable that bound, or set a custom number of seconds when debugging slow hardware or downloads.
 Use `make product-readiness` before a release handoff to see which local gates are proven and which external live-provider or Apple distribution checks still need credentials.
 `make product-readiness` detects provider keys saved by the app in macOS Keychain as well as shell environment variables, but it still will not contact live providers unless `BENCHFORGE_PRODUCT_READINESS_RUN_LIVE=1` is set.
-The in-app Doctor surfaces the same product-readiness split: validated remote cloud targets count as live-provider evidence, while signed/notarized public distribution stays explicit until Apple release credentials are used.
+The in-app Doctor and Dashboard surface the same product-readiness split: validated remote cloud targets count as live-provider evidence, while signed/notarized public distribution stays explicit until Apple release credentials are used.
 
 ## Packaging
 

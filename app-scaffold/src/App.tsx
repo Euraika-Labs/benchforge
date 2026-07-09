@@ -587,6 +587,10 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const packCheck = dashboardCheck(checks, 'benchmark-packs', 'Benchmark packs', packs.length ? 'ok' : 'error', packs.length ? `${packs.length} packs available` : 'No packs found');
   const liveCloudCheck = dashboardCheck(checks, 'product-live-cloud', 'Live cloud validation', 'warn', 'Validate a real cloud target');
   const distributionCheck = dashboardCheck(checks, 'product-distribution', 'Public distribution', 'warn', 'Run signed/notarized release validation');
+  const liveCloudTargetIds = useMemo(
+    () => targets.filter(target => targetIsSelectableModel(target) && isCloudModelTarget(target)).map(target => target.id),
+    [targets],
+  );
   const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
   const sandboxCheck = dashboardSandboxCheck(checks);
   const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters, checks);
@@ -654,6 +658,35 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   }
   function openCloudTargetSetup() {
     openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: recommendedComparisonPack, targetIds: setupLocalTargetIds });
+  }
+  async function validateDashboardCloudTargets() {
+    if (!liveCloudTargetIds.length) {
+      openCloudTargetSetup();
+      setMessage('Add a cloud target before running live cloud validation');
+      return;
+    }
+    setBusy(true);
+    try {
+      setMessage(`Validating ${liveCloudTargetIds.length} cloud target(s) with live provider probes`);
+      const validationResults = await Promise.all(liveCloudTargetIds.map(id => validateTarget(id)));
+      await refresh();
+      const blockers = validationResults.filter(result => result.status === 'error');
+      if (blockers.length) {
+        openTargetRepair({ targetIds: blockers.map(blocker => blocker.targetId), code: validationRepairCode(blockers[0]) });
+        setMessage(`Cloud validation found ${formatValidationCodeCounts(blockers)}. Fix the affected target before running live comparisons.`);
+        return;
+      }
+      const warnings = validationResults.filter(result => result.status !== 'ok');
+      if (warnings.length) {
+        setMessage(`Cloud validation finished with warnings: ${formatValidationCodeCounts(warnings)}`);
+        return;
+      }
+      setMessage(`Validated ${validationResults.length} cloud target(s); product readiness can count this as live cloud evidence.`);
+    } catch (error) {
+      setMessage(`Cloud validation failed: ${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
   }
   function openHuggingFaceLocalModelSetup() {
     openHuggingFaceLocalSetup({ benchmarkPackId: recommendedComparisonPack, targetIds: setupCloudTargetIds });
@@ -877,6 +910,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
         <button onClick={openLocalRuntimeDetection}><Search size={14} />Detect runtime</button>
         <button onClick={openHuggingFaceLocalModelSetup}><Settings size={14} />Local model</button>
         <button onClick={openCloudTargetSetup}><Boxes size={14} />Cloud target</button>
+        <button disabled={busy || activeRunInProgress || !liveCloudTargetIds.length} title={liveCloudTargetIds.length ? `Validate ${liveCloudTargetIds.length} configured cloud target(s) with real provider probes` : 'Add a cloud target before validating live provider access'} onClick={() => validateDashboardCloudTargets().catch(error => setMessage(String(error)))}><ShieldCheck size={14} />Validate cloud</button>
         <button disabled={primaryBenchmarkActionDisabled} title={primaryBenchmarkActionTitle} onClick={() => openComparisonRun()}>{comparisonNeedsPricing ? <Pencil size={14} /> : comparisonReady ? <Play size={14} /> : dashboardBenchmarkStepIcon(nextBenchmarkStep)}{busy && comparisonReady ? 'Starting' : primaryBenchmarkActionLabel}</button>
         <button disabled={compareAllDisabled} title={compareAllTitle} onClick={openAllComparisonRun}><ClipboardCheck size={14} />Compare all</button>
         <button disabled={reliabilityComparisonDisabled} title={reliabilityComparisonTitle} onClick={() => openComparisonRun('llm-reliability')}><FlaskConical size={14} />Reliability comparison</button>
