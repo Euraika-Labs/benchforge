@@ -14209,12 +14209,14 @@ pub fn run_cli_live_cloud_smoke() -> Result<serde_json::Value, String> {
         target_max_tokens,
     )?;
     if plan.targets.is_empty() {
+        let setup = live_cloud_setup_summary(&plan, &[], &[], &[], run_benchmark, None);
         return Ok(serde_json::json!({
             "status": "skipped",
             "benchmarkPackId": benchmark_pack_id,
             "runRequested": run_benchmark,
             "message": live_cloud_no_targets_message(&plan.skipped),
-            "skipped": plan.skipped
+            "skipped": plan.skipped,
+            "setup": setup
         }));
     }
 
@@ -14288,6 +14290,14 @@ pub fn run_cli_live_cloud_smoke() -> Result<serde_json::Value, String> {
         "results": run_results,
         "runError": run_error,
         "skipped": plan.skipped,
+        "setup": live_cloud_setup_summary(
+            &plan,
+            &validations,
+            &benchmark_target_ids,
+            &benchmark_skipped_targets,
+            run_benchmark,
+            run_error.as_deref()
+        ),
         "notes": [
             "Validation uses real provider endpoints and may spend a tiny completion probe.",
             "Set BENCHFORGE_LIVE_CLOUD_RUN=1 to run the selected benchmark pack after successful validation.",
@@ -14295,6 +14305,156 @@ pub fn run_cli_live_cloud_smoke() -> Result<serde_json::Value, String> {
             "Set BENCHFORGE_LIVE_CLOUD_PROVIDERS to a comma-separated subset such as openai,anthropic,openrouter,mistral,azure-openai,gemini."
         ]
     }))
+}
+
+fn live_cloud_setup_summary(
+    plan: &LiveCloudTargetPlan,
+    validations: &[TargetValidationDto],
+    benchmark_target_ids: &[String],
+    benchmark_skipped_targets: &[serde_json::Value],
+    run_benchmark: bool,
+    run_error: Option<&str>,
+) -> serde_json::Value {
+    let provider_by_target_id = plan
+        .targets
+        .iter()
+        .map(|target| (target.id.as_str(), target.adapter_id.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    let configured_providers = plan
+        .targets
+        .iter()
+        .map(|target| target.adapter_id.clone())
+        .collect::<Vec<_>>();
+    let validated_providers = validations
+        .iter()
+        .filter(|validation| validation.status == "ok")
+        .filter_map(|validation| {
+            provider_by_target_id
+                .get(validation.target_id.as_str())
+                .map(|provider| (*provider).to_string())
+        })
+        .collect::<Vec<_>>();
+    let benchmark_providers = benchmark_target_ids
+        .iter()
+        .filter_map(|target_id| {
+            provider_by_target_id
+                .get(target_id.as_str())
+                .map(|provider| (*provider).to_string())
+        })
+        .collect::<Vec<_>>();
+    let mut actions = Vec::new();
+    for skipped in &plan.skipped {
+        actions.push(serde_json::json!({
+            "provider": skipped.provider.clone(),
+            "reason": skipped.reason.clone(),
+            "action": live_cloud_setup_action(&skipped.reason),
+            "detail": skipped.detail.clone()
+        }));
+    }
+    for validation in validations
+        .iter()
+        .filter(|validation| validation.status != "ok")
+    {
+        let provider = provider_by_target_id
+            .get(validation.target_id.as_str())
+            .copied()
+            .unwrap_or(validation.target_id.as_str());
+        actions.push(serde_json::json!({
+            "provider": provider,
+            "targetId": validation.target_id.clone(),
+            "reason": validation.status.clone(),
+            "action": "Fix the provider key, model, endpoint, quota, or transport issue, then rerun make live-cloud-smoke.",
+            "detail": validation.detail.clone()
+        }));
+    }
+    for skipped in benchmark_skipped_targets {
+        let target_id = skipped
+            .get("targetId")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown");
+        let provider = provider_by_target_id
+            .get(target_id)
+            .copied()
+            .unwrap_or(target_id);
+        actions.push(serde_json::json!({
+            "provider": provider,
+            "targetId": target_id,
+            "reason": skipped.get("reason").and_then(|value| value.as_str()).unwrap_or("skipped"),
+            "action": "Add input/output pricing metadata or choose a catalog-priced model before running with a cost cap.",
+            "detail": skipped.get("detail").and_then(|value| value.as_str()).unwrap_or("Target was skipped from the capped live benchmark run.")
+        }));
+    }
+
+    serde_json::json!({
+        "configuredProviderCount": configured_providers.len(),
+        "validatedProviderCount": validated_providers.len(),
+        "benchmarkProviderCount": benchmark_providers.len(),
+        "setupActionCount": actions.len(),
+        "configuredProviders": configured_providers,
+        "validatedProviders": validated_providers,
+        "benchmarkProviders": benchmark_providers,
+        "actions": actions,
+        "nextAction": live_cloud_next_action(
+            run_benchmark,
+            plan.targets.len(),
+            validations.iter().filter(|validation| validation.status == "ok").count(),
+            benchmark_target_ids.len(),
+            benchmark_skipped_targets.len(),
+            plan.skipped.len(),
+            run_error
+        ),
+        "commandExamples": [
+            "BENCHFORGE_LIVE_CLOUD_PROVIDERS=openai,gemini make live-cloud-smoke",
+            "make live-cloud-run",
+            "make live-cloud-run-basics",
+            "BENCHFORGE_LIVE_CLOUD_RUN=1 BENCHFORGE_LIVE_CLOUD_MAX_COST_USD=0.25 make live-cloud-smoke"
+        ]
+    })
+}
+
+fn live_cloud_setup_action(reason: &str) -> &'static str {
+    match reason {
+        "adapter_missing" => "Install or restore the missing BenchForge adapter, then rerun make live-cloud-smoke.",
+        "missing_key" => "Save the provider API key in BenchForge or set the provider API key environment variable.",
+        "missing_model" => "Set the provider model/deployment environment variable or use a provider with a default smoke model.",
+        "missing_base_url" => "Set the provider base URL environment variable to a real endpoint.",
+        "unsupported_provider" => "Fix BENCHFORGE_LIVE_CLOUD_PROVIDERS to use supported provider ids.",
+        _ => "Review the skipped provider detail, update configuration, then rerun make live-cloud-smoke.",
+    }
+}
+
+fn live_cloud_next_action(
+    run_benchmark: bool,
+    configured_provider_count: usize,
+    validated_provider_count: usize,
+    benchmark_provider_count: usize,
+    benchmark_skipped_target_count: usize,
+    skipped_provider_count: usize,
+    run_error: Option<&str>,
+) -> String {
+    if let Some(error) = run_error {
+        return format!("Benchmark did not run cleanly: {error}");
+    }
+    if configured_provider_count == 0 {
+        return "Configure at least one supported provider key, then rerun make live-cloud-smoke."
+            .into();
+    }
+    if validated_provider_count == 0 {
+        return "Fix the listed provider setup or validation issues, then rerun make live-cloud-smoke.".into();
+    }
+    if !run_benchmark {
+        return "Validation is ready. Set BENCHFORGE_LIVE_CLOUD_RUN=1 to run the selected prompt pack with real providers.".into();
+    }
+    if benchmark_provider_count == 0 && benchmark_skipped_target_count > 0 {
+        return "Validated providers are missing pricing for capped live benchmark runs. Add pricing metadata or choose catalog-priced models.".into();
+    }
+    if benchmark_skipped_target_count > 0 {
+        return "Some providers ran while others were skipped for missing pricing. Add pricing metadata before treating the comparison as complete.".into();
+    }
+    if skipped_provider_count > 0 {
+        return "Live benchmark completed for configured providers. Review skipped providers before treating provider coverage as complete.".into();
+    }
+    "Live cloud validation and benchmark setup are complete for the selected providers.".into()
 }
 
 fn live_cloud_smoke_status(
@@ -22864,6 +23024,55 @@ mod tests {
         assert_eq!(plan.skipped.len(), 1);
         assert_eq!(plan.skipped[0].provider, "openai");
         assert_eq!(plan.skipped[0].reason, "missing_key");
+    }
+
+    #[test]
+    fn live_cloud_setup_summary_guides_missing_provider_setup() {
+        let filter = BTreeSet::from(["openai".to_string()]);
+        let plan = live_cloud_target_plan(Some(&filter), &|_| None, &|_| false, 32)
+            .expect("plan should build");
+        let summary = live_cloud_setup_summary(&plan, &[], &[], &[], false, None);
+
+        assert_eq!(summary["configuredProviderCount"], 0);
+        assert_eq!(summary["setupActionCount"], 1);
+        assert_eq!(summary["actions"][0]["provider"], "openai");
+        assert_eq!(summary["actions"][0]["reason"], "missing_key");
+        assert!(summary["actions"][0]["action"]
+            .as_str()
+            .expect("action should be a string")
+            .contains("API key"));
+        assert!(summary["nextAction"]
+            .as_str()
+            .expect("next action should be a string")
+            .contains("Configure at least one"));
+    }
+
+    #[test]
+    fn live_cloud_setup_summary_points_validated_providers_to_run_flag() {
+        let filter = BTreeSet::from(["openai".to_string()]);
+        let plan = live_cloud_target_plan(
+            Some(&filter),
+            &|_| None,
+            &|adapter_id| adapter_id == "openai",
+            32,
+        )
+        .expect("plan should build");
+        let validations = vec![TargetValidationDto {
+            target_id: "live-openai".into(),
+            status: "ok".into(),
+            detail: "validated".into(),
+            checked_at: "2026-07-09T00:00:00Z".into(),
+        }];
+        let summary = live_cloud_setup_summary(&plan, &validations, &[], &[], false, None);
+
+        assert_eq!(summary["configuredProviderCount"], 1);
+        assert_eq!(summary["validatedProviderCount"], 1);
+        assert_eq!(summary["validatedProviders"][0], "openai");
+        assert_eq!(summary["setupActionCount"], 0);
+        assert!(summary["nextAction"]
+            .as_str()
+            .expect("next action should be a string")
+            .contains("BENCHFORGE_LIVE_CLOUD_RUN=1"));
     }
 
     #[test]

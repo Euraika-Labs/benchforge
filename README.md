@@ -278,11 +278,11 @@ Live provider probes are outside the default readiness gate and skip cleanly whe
 
 ```bash
 BENCHFORGE_LIVE_CLOUD_PROVIDERS=openai,anthropic,openrouter,gemini make live-cloud-smoke
-BENCHFORGE_LIVE_CLOUD_RUN=1 make live-cloud-smoke
-BENCHFORGE_LIVE_CLOUD_RUN=1 BENCHFORGE_LIVE_CLOUD_PACK=llm-basics make live-cloud-smoke
+make live-cloud-run
+make live-cloud-run-basics
 ```
 
-By default the live benchmark run uses `llm-connectivity` with a low token budget. Set `BENCHFORGE_LIVE_CLOUD_PACK` to a prompt-only pack such as `llm-basics`, `llm-core`, or `llm-reliability` when you want real providers to run the same comparison pack you use in the app.
+By default `make live-cloud-smoke` validates configured providers and prints a `setup.nextAction` checklist without starting a paid benchmark run. `make live-cloud-run` adds `BENCHFORGE_LIVE_CLOUD_RUN=1` and runs `llm-connectivity` with a low token budget. `make live-cloud-run-basics` runs the same live providers on `llm-basics`. Set `BENCHFORGE_LIVE_CLOUD_PACK` to another prompt-only pack such as `llm-core` or `llm-reliability` when you want real providers to run the same comparison pack you use in the app.
 
 ## Run CLI Agent Benchmarks
 
@@ -376,7 +376,9 @@ Run these from the repository root.
 | `make benchmark-readiness` | Offline readiness gate for local/cloud benchmarking, worker harness imports, and report evidence. |
 | `make dependency-audit` | Verify target-specific dependency advisory exceptions against the supported macOS build graph. |
 | `make benchmark-readiness-full` | Extended gate before packaging or handoff. |
-| `make live-cloud-smoke` | Optional real-provider validation and tiny benchmark path. |
+| `make live-cloud-smoke` | Optional real-provider validation with setup guidance; does not run a benchmark unless `BENCHFORGE_LIVE_CLOUD_RUN=1` is set. |
+| `make live-cloud-run` | Validate configured real providers and run the low-token `llm-connectivity` live benchmark. |
+| `make live-cloud-run-basics` | Validate configured real providers and run the same `llm-basics` pack against them. |
 | `make first-run-smoke` | Verify a clean app store using a temporary `BENCHFORGE_DATA_DIR`. |
 | `make local-runtime-discovery-smoke` | Verify local runtime discovery, validation, and handoff contracts. |
 | `make cloud-provider-job-smoke` | Verify provider-style queued jobs, snapshots, metrics, retry evidence, and exports. |
