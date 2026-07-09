@@ -9151,8 +9151,109 @@ fn benchmark_readiness_doctor_checks(
         failing_cloud_targets,
         comparison_evidence.as_ref(),
     ));
+    checks.extend(product_readiness_doctor_checks(
+        &enabled_targets,
+        &adapter_map,
+    ));
 
     checks
+}
+
+fn product_readiness_doctor_checks(
+    enabled_targets: &[&store::TargetRecord],
+    adapter_map: &BTreeMap<String, adapters::LoadedAdapter>,
+) -> Vec<DoctorCheckDto> {
+    vec![
+        product_live_cloud_validation_doctor_check(enabled_targets, adapter_map),
+        product_distribution_doctor_check(),
+    ]
+}
+
+fn product_live_cloud_validation_doctor_check(
+    enabled_targets: &[&store::TargetRecord],
+    adapter_map: &BTreeMap<String, adapters::LoadedAdapter>,
+) -> DoctorCheckDto {
+    let remote_cloud_targets = enabled_targets
+        .iter()
+        .copied()
+        .filter(|target| target_is_cloud_benchmark_model(target, adapter_map))
+        .filter(|target| target_uses_remote_provider_endpoint(target, adapter_map))
+        .collect::<Vec<_>>();
+    let validated = remote_cloud_targets
+        .iter()
+        .filter(|target| target.validation_status.as_deref() == Some("ok"))
+        .count();
+    let failed = remote_cloud_targets
+        .iter()
+        .filter(|target| target.validation_status.as_deref() == Some("error"))
+        .count();
+    let needs_validation = remote_cloud_targets
+        .len()
+        .saturating_sub(validated)
+        .saturating_sub(failed);
+    let (status, detail, remediation) = if validated > 0 {
+        (
+            "ok",
+            format!(
+                "{} live cloud target(s) have stored ok validation against a remote provider endpoint",
+                validated
+            ),
+            "Run the same LLM benchmark pack against local and validated cloud targets before choosing a model."
+                .to_string(),
+        )
+    } else if !remote_cloud_targets.is_empty() {
+        let mut parts = Vec::new();
+        if failed > 0 {
+            parts.push(format!("{} validation failed", failed));
+        }
+        if needs_validation > 0 {
+            parts.push(format!("{} need validation", needs_validation));
+        }
+        (
+            "warn",
+            format!(
+                "{} configured live cloud target(s), but none have ok validation{}",
+                remote_cloud_targets.len(),
+                if parts.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", parts.join("; "))
+                }
+            ),
+            "Open Targets, validate a real provider target with a tiny completion probe, then run the local/cloud benchmark shortcut."
+                .to_string(),
+        )
+    } else {
+        (
+            "warn",
+            "no remote cloud provider target has been configured and validated".to_string(),
+            "Add a cloud target, save its provider key in Keychain, and validate it before treating cloud benchmarking as proven."
+                .to_string(),
+        )
+    };
+    doctor_check(
+        "product-live-cloud",
+        "Live cloud validation",
+        status,
+        &detail,
+        "Product readiness",
+        "recommended",
+        &remediation,
+        "Targets > Model Target",
+    )
+}
+
+fn product_distribution_doctor_check() -> DoctorCheckDto {
+    doctor_check(
+        "product-distribution",
+        "Public distribution",
+        "warn",
+        "signed and notarized public DMG distribution has not been verified from this checkout",
+        "Product readiness",
+        "optional",
+        "Source builds and unsigned local DMGs are suitable for development; run make release-signing-plan before public distribution.",
+        "make release-signing-plan",
+    )
 }
 
 fn next_benchmark_step_check(
@@ -9825,6 +9926,22 @@ fn target_parts_are_cloud_benchmark_model(
     adapter_map
         .get(adapter_id)
         .is_some_and(|adapter| adapter_is_cloud_model_adapter(adapter))
+}
+
+fn target_uses_remote_provider_endpoint(
+    target: &store::TargetRecord,
+    adapter_map: &BTreeMap<String, adapters::LoadedAdapter>,
+) -> bool {
+    let config = target_config_json(target);
+    if config_base_url_is_remote(&config) {
+        return true;
+    }
+    if config_base_url_is_local(&config) {
+        return false;
+    }
+    adapter_map
+        .get(&target.adapter_id)
+        .is_some_and(adapter_is_cloud_model_adapter)
 }
 
 fn benchmark_adapter_map() -> BTreeMap<String, adapters::LoadedAdapter> {
@@ -21769,6 +21886,72 @@ mod tests {
         assert_eq!(
             doctor_check_command(&checks, "benchmark-next-step"),
             Some("Runs > Local + cloud")
+        );
+    }
+
+    #[test]
+    fn doctor_product_readiness_requires_validated_remote_cloud_target() {
+        let local = target_record(
+            "local-llama",
+            "Local llama.cpp",
+            "direct_model",
+            "llama-cpp-openai",
+            serde_json::json!({
+                "base_url": "http://127.0.0.1:8080/v1",
+                "model": "local-model"
+            }),
+        );
+        let mut cloud = target_record(
+            "cloud-openrouter",
+            "OpenRouter",
+            "direct_model",
+            "openrouter",
+            serde_json::json!({
+                "base_url": "https://openrouter.ai/api/v1",
+                "model": "openai/gpt-4.1-mini"
+            }),
+        );
+
+        let unvalidated_checks = benchmark_readiness_doctor_checks(
+            &[local.clone(), cloud.clone()],
+            &[],
+            runner::list_benchmark_packs(),
+            adapters::load_builtin_adapters(),
+        );
+        assert_eq!(
+            doctor_check_status(&unvalidated_checks, "product-live-cloud"),
+            Some("warn")
+        );
+        assert!(
+            doctor_check_detail(&unvalidated_checks, "product-live-cloud")
+                .unwrap_or_default()
+                .contains("none have ok validation")
+        );
+
+        cloud.validation_status = Some("ok".into());
+        cloud.validation_detail = Some("ok: tiny completion probe passed".into());
+        cloud.validation_checked_at = Some("2026-07-09T12:00:00Z".into());
+        let validated_checks = benchmark_readiness_doctor_checks(
+            &[local, cloud],
+            &[],
+            runner::list_benchmark_packs(),
+            adapters::load_builtin_adapters(),
+        );
+        assert_eq!(
+            doctor_check_status(&validated_checks, "product-live-cloud"),
+            Some("ok")
+        );
+        assert!(doctor_check_detail(&validated_checks, "product-live-cloud")
+            .unwrap_or_default()
+            .contains("stored ok validation"));
+        assert_eq!(
+            doctor_check_status(&validated_checks, "product-distribution"),
+            Some("warn")
+        );
+        assert!(
+            doctor_check_remediation(&validated_checks, "product-distribution")
+                .unwrap_or_default()
+                .contains("release-signing-plan")
         );
     }
 

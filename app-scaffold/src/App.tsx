@@ -585,6 +585,8 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
   const comparisonEvidenceCheck = dashboardCheck(checks, 'benchmark-local-cloud-evidence', 'Evidence quality', 'warn', comparisonResultCheck.status === 'ok' ? 'Run 3 repetitions per task/target' : 'Run a local + cloud comparison');
   const nextBenchmarkStep = dashboardCheck(checks, 'benchmark-next-step', 'Next benchmark step', 'warn', 'Add one local model target and one cloud model target');
   const packCheck = dashboardCheck(checks, 'benchmark-packs', 'Benchmark packs', packs.length ? 'ok' : 'error', packs.length ? `${packs.length} packs available` : 'No packs found');
+  const liveCloudCheck = dashboardCheck(checks, 'product-live-cloud', 'Live cloud validation', 'warn', 'Validate a real cloud target');
+  const distributionCheck = dashboardCheck(checks, 'product-distribution', 'Public distribution', 'warn', 'Run signed/notarized release validation');
   const localRuntimeCheck = dashboardLocalRuntimeCheck(checks);
   const sandboxCheck = dashboardSandboxCheck(checks);
   const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters, checks);
@@ -861,7 +863,7 @@ function Dashboard({ targets, adapters, packs, checks, results, runJobs, downloa
     <div className="panel readiness-panel">
       <div className="panel-head"><h2>Benchmark Readiness</h2><button onClick={() => setPage('doctor')}><ShieldCheck size={14} />Doctor</button></div>
       <div className="readiness-steps">
-        {[localRuntimeCheck.check, sandboxCheck.check, localCheck, cloudCheck, compareCheck, comparisonResultCheck, comparisonEvidenceCheck, packCheck].map(check => <div key={check.id} className="readiness-step">
+        {[localRuntimeCheck.check, sandboxCheck.check, localCheck, cloudCheck, compareCheck, comparisonResultCheck, comparisonEvidenceCheck, packCheck, liveCloudCheck, distributionCheck].map(check => <div key={check.id} className="readiness-step">
           <span className={`pill ${check.status}`}>{check.status}</span>
           <strong>{check.label}</strong>
           <span>{check.detail}</span>
@@ -6459,6 +6461,11 @@ function doctorAction(check: DoctorCheck, targets: Target[], cloudSetupAdapterId
   }
   if (check.id === 'benchmark-packs' || check.id === 'benchmark-pack-diagnostics') {
     return <button onClick={() => setPage('benchmarks')}><FlaskConical size={14} />Packs</button>;
+  }
+  if (check.id === 'product-live-cloud') {
+    return <button onClick={() => {
+      openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId, targetIds: recommendedTargets.setupLocalTargetIds });
+    }}><Boxes size={14} />Cloud</button>;
   }
   if (check.id === 'docker' || check.id === 'colima') {
     return <button onClick={() => setPage('runs')}><ShieldCheck size={14} />Runs</button>;

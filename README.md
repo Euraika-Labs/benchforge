@@ -397,6 +397,7 @@ Run these from the repository root.
 
 Use focused `make *-smoke` targets when changing a specific workflow. Use `make benchmark-readiness` before handing benchmark-critical changes to another user.
 Use `make product-readiness` before a release handoff to see which local gates are proven and which external live-provider or Apple distribution checks still need credentials.
+The in-app Doctor surfaces the same product-readiness split: validated remote cloud targets count as live-provider evidence, while signed/notarized public distribution stays explicit until Apple release credentials are used.
 
 ## Packaging
 
