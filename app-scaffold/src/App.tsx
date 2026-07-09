@@ -4580,6 +4580,8 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const selectedPack = packs.find(pack => pack.id === selectedPackId);
   const modelBenchmarkPacks = useMemo(() => modelBenchmarkPackOptions(packs), [packs]);
   const setupBenchmarkPackId = resolveModelBenchmarkPackId(selectedPackId, modelBenchmarkPacks, packs);
+  const beginnerComparisonPackId = recommendedComparisonPackId(packs);
+  const beginnerComparisonPackAvailable = packs.some(pack => pack.id === beginnerComparisonPackId);
   const incompatibleSelectedTargets = selectedPack
     ? targets.filter(target => selected.includes(target.id) && !targetCompatibleWithPack(target, selectedPack))
     : [];
@@ -4599,6 +4601,7 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const cloudSetupAdapterId = usePreferredCloudSetupAdapterId(adapters);
   const cloudTargetIds = cloudTargets.map(target => target.id);
   const pricedCloudTargets = cloudTargets.filter(targetHasInputOutputPricing);
+  const pricedCloudTargetIds = pricedCloudTargets.map(target => target.id);
   const unpricedCloudTargetIds = cloudTargets
     .filter(target => !targetHasInputOutputPricing(target))
     .map(target => target.id);
@@ -4608,6 +4611,12 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     : [];
   const localCloudTargetIds = localTargetIds.length && preferredCloudTargetIds.length
     ? [...localTargetIds, ...preferredCloudTargetIds]
+    : [];
+  const readyLocalCloudTargetIds = localTargetIds.length && pricedCloudTargetIds.length
+    ? uniqueIdsInOrder([...localTargetIds, ...pricedCloudTargetIds])
+    : [];
+  const beginnerComparisonTargetIds = readyLocalCloudTargetIds.length
+    ? dashboardPrimaryComparisonTargetIds([localTargetIds[0], pricedCloudTargetIds[0]], readyLocalCloudTargetIds)
     : [];
   const localCloudSelectedUnpricedCloudTargetIds = localCloudTargetIds.filter(targetId => unpricedCloudTargetIds.includes(targetId));
   const modelTargetIds = directTargets.map(target => target.id);
@@ -5043,6 +5052,83 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: setupBenchmarkPackId, targetIds: selectedLocalTargetIds });
     setMessage(`Preparing cloud target setup for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
   }
+  function openBeginnerLocalRuntimeSetup() {
+    openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: beginnerComparisonPackId, targetIds: pricedCloudTargetIds.slice(0, 1) });
+    setMessage(`Detecting local runtimes for a ${benchmarkPackLabel(beginnerComparisonPackId, modelBenchmarkPacks)} comparison`);
+  }
+  function openBeginnerHfLocalSetup() {
+    openHuggingFaceLocalSetup({ benchmarkPackId: beginnerComparisonPackId, targetIds: pricedCloudTargetIds.slice(0, 1) });
+    setMessage(huggingFaceLocalModelSetupMessage(targets, pricedCloudTargetIds.slice(0, 1), beginnerComparisonPackId));
+  }
+  function openBeginnerCloudSetup() {
+    openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: beginnerComparisonPackId, targetIds: localTargetIds.slice(0, 1) });
+    setMessage(`Preparing a cloud model for a ${benchmarkPackLabel(beginnerComparisonPackId, modelBenchmarkPacks)} comparison`);
+  }
+  async function startBeginnerComparison() {
+    if (!beginnerComparisonTargetIds.length) {
+      setMessage('Add one local model and one priced cloud model before launching a guided comparison');
+      return;
+    }
+    if (!beginnerComparisonPackAvailable) {
+      setMessage(`Benchmark pack ${beginnerComparisonPackId} is not available`);
+      return;
+    }
+    const concurrencyForTargets = Math.min(2, Math.max(1, beginnerComparisonTargetIds.length));
+    setBusy(true);
+    try {
+      setRunValidationBlockers([]);
+      setSelected(beginnerComparisonTargetIds);
+      setSelectedPackId(beginnerComparisonPackId);
+      setRepetitions(String(recommendedTaskRepetitions));
+      setWarmupRuns('1');
+      setConcurrency(String(concurrencyForTargets));
+      setMaxCostUsd(String(defaultComparisonMaxCostUsd));
+      setDocker(false);
+      setMessage(`Validating ${beginnerComparisonTargetIds.length} local/cloud model(s) before launch`);
+      const validationResults = await Promise.all(beginnerComparisonTargetIds.map(id => validateTarget(id)));
+      await refresh();
+      const blockers = validationResults.filter(result => result.status === 'error');
+      if (blockers.length) {
+        setRunValidationBlockers(blockers);
+        setMessage(`Launch blocked: ${formatValidationCodeCounts(blockers)}. Fix validation errors or choose different models.`);
+        return;
+      }
+      const tasks = await listBenchmarkPackTasks(beginnerComparisonPackId);
+      const taskIds = tasks.map(task => task.id);
+      if (!taskIds.length) {
+        setMessage(`${benchmarkPackLabel(beginnerComparisonPackId, modelBenchmarkPacks)} has no runnable tasks`);
+        return;
+      }
+      setPackTasks(tasks);
+      setSelectedTaskIds(taskIds);
+      setTaskSelectionOpen(false);
+      const warningNote = validationResults.some(result => result.status !== 'ok')
+        ? `; warnings: ${formatValidationCodeCounts(validationResults.filter(result => result.status !== 'ok'))}`
+        : '';
+      setMessage(`Launching ${benchmarkPackLabel(beginnerComparisonPackId, modelBenchmarkPacks)} on ${beginnerComparisonTargetIds.length} model(s), ${recommendedTaskRepetitions} repetitions, 1 warmup, ${formatCost(defaultComparisonMaxCostUsd)} cap${warningNote}`);
+      const job = await startRunJob(
+        beginnerComparisonTargetIds,
+        false,
+        beginnerComparisonPackId,
+        recommendedTaskRepetitions,
+        1,
+        concurrencyForTargets,
+        defaultComparisonMaxCostUsd,
+        taskIds,
+      );
+      setJobs(current => mergeJob(current, job));
+      if (isJobActive(job)) {
+        setActiveJobId(job.id);
+        setMessage(`Started guided comparison job ${job.id.slice(0, 8)}`);
+      } else {
+        await handleFinishedRunJob(job);
+      }
+    } catch (error) {
+      setMessage(benchmarkRunFailureMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function cancelRun(id: string) {
     setMessage(`Cancelling run job ${id.slice(0, 8)}`);
     try {
@@ -5220,6 +5306,23 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       ? 'Clear completed, failed, or cancelled run jobs from this table'
       : 'No finished run jobs to clear';
   return <section><div className="section-head"><h1>Run Builder</h1><div className="actions"><button disabled={runPackDisabled} title={runPackTitle} onClick={startRun}><Play size={16} />Run pack</button><button disabled={clearFinishedDisabled} title={clearFinishedTitle} onClick={() => clearFinished().catch(error => setMessage(String(error)))}><Trash2 size={16} />Clear finished</button></div></div>
+    <BeginnerBenchmarkPanel
+      localCount={localTargetIds.length}
+      cloudCount={cloudTargetIds.length}
+      pricedCloudCount={pricedCloudTargetIds.length}
+      unpricedCloudCount={unpricedCloudTargetIds.length}
+      launchTargetCount={beginnerComparisonTargetIds.length}
+      readyTargetCount={readyLocalCloudTargetIds.length}
+      packLabel={benchmarkPackLabel(beginnerComparisonPackId, modelBenchmarkPacks)}
+      canLaunch={Boolean(beginnerComparisonTargetIds.length && beginnerComparisonPackAvailable)}
+      busy={busy || activeRunInProgress}
+      onLaunch={() => startBeginnerComparison().catch(error => setMessage(benchmarkRunFailureMessage(error)))}
+      onUseBuilder={() => applyTargetShortcut('local/cloud comparison', beginnerComparisonTargetIds, beginnerComparisonPackId)}
+      onAddLocalTarget={openBeginnerLocalRuntimeSetup}
+      onAddHfLocalModel={openBeginnerHfLocalSetup}
+      onAddCloudTarget={openBeginnerCloudSetup}
+      onRepairPricing={() => repairRunPricingBlockers(unpricedCloudTargetIds)}
+    />
     <div className="panel compact">
       <div className="form-grid">
         <label>Benchmark pack <select value={selectedPackId} onChange={event => setSelectedPackId(event.target.value)}>{packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name} ({pack.tasks})</option>)}</select></label>
@@ -5318,6 +5421,81 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
       return <tr key={job.id}><td>{job.id.slice(0, 8)}</td><td>{job.runGroupId.slice(0, 8)}</td><td>{job.benchmarkPackId}</td><td>{jobPlanSummary(job)}</td><td><span className={`pill ${jobStatusClass(job.status)}`}>{job.status}</span></td><td><div className="progress-cell"><div className="progress-track"><div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%` }} /></div><span>{job.completed}/{job.total || '-'}</span></div></td><td><JobMessageCell job={job} /></td><td>{job.results.length}</td><td><div className="row-actions">{job.results.length ? <><button disabled={busy} title="Open Results for this run group" onClick={() => openJobResults(job)}><ClipboardCheck size={14} />Results</button><button disabled={busy} title="Export a report folder for this job's stored results" onClick={() => exportJobReport(job)}><Download size={14} />Report</button></> : null}{isJobActive(job) ? <button disabled={job.status === 'cancelling'} title="Cancel run job" onClick={() => cancelRun(job.id).catch(error => setMessage(String(error)))}><Square size={14} />Stop</button> : <><button disabled={busy} title="Duplicate run job" onClick={() => replayRun(job.id, 'duplicate').catch(error => setMessage(String(error)))}><Copy size={14} />Duplicate</button>{isJobRetryable(job) ? <button disabled={busy} title="Retry failed job" onClick={() => replayRun(job.id, 'retry').catch(error => setMessage(String(error)))}><RotateCcw size={14} />Retry</button> : null}</>}</div></td></tr>;
     }) : <tr><td colSpan={9} className="muted">No run jobs found.</td></tr>}</tbody></table>
   </section>;
+}
+
+function BeginnerBenchmarkPanel({
+  localCount,
+  cloudCount,
+  pricedCloudCount,
+  unpricedCloudCount,
+  launchTargetCount,
+  readyTargetCount,
+  packLabel,
+  canLaunch,
+  busy,
+  onLaunch,
+  onUseBuilder,
+  onAddLocalTarget,
+  onAddHfLocalModel,
+  onAddCloudTarget,
+  onRepairPricing,
+}: {
+  localCount: number;
+  cloudCount: number;
+  pricedCloudCount: number;
+  unpricedCloudCount: number;
+  launchTargetCount: number;
+  readyTargetCount: number;
+  packLabel: string;
+  canLaunch: boolean;
+  busy: boolean;
+  onLaunch: () => void;
+  onUseBuilder: () => void;
+  onAddLocalTarget: () => void;
+  onAddHfLocalModel: () => void;
+  onAddCloudTarget: () => void;
+  onRepairPricing: () => void;
+}) {
+  const missingLocal = localCount === 0;
+  const missingCloud = cloudCount === 0;
+  const needsPricing = localCount > 0 && cloudCount > 0 && pricedCloudCount === 0 && unpricedCloudCount > 0;
+  const tone = canLaunch ? 'ok' : 'warn';
+  const summary = canLaunch
+    ? `Ready to run ${packLabel} on ${launchTargetCount} local/cloud model(s) with ${recommendedTaskRepetitions} repetitions, 1 warmup, and a ${formatCost(defaultComparisonMaxCostUsd)} spend cap.`
+    : missingLocal && missingCloud
+      ? 'Add one local model and one cloud model, then BenchForge can run the same benchmark across both.'
+      : missingLocal
+        ? 'Add or detect a local model so the cloud model has something to compare against.'
+        : missingCloud
+          ? 'Add a cloud model so the local model has a hosted baseline.'
+          : needsPricing
+            ? 'Cloud pricing is missing. Add input/output pricing so BenchForge can estimate cost before launching.'
+            : 'Add one local model and one priced cloud model before launching a guided comparison.';
+  const readyScopeNote = canLaunch && readyTargetCount > launchTargetCount
+    ? `Launching uses the recommended ${launchTargetCount} model(s); review settings to include all ${readyTargetCount}.`
+    : '';
+  return <div className={`preflight-box beginner-launch-panel ${tone}`}>
+    <div className="panel-head">
+      <h2>Launch a Benchmark</h2>
+      <span className={`pill ${tone}`}>{canLaunch ? 'ready' : 'setup'}</span>
+    </div>
+    <p>{summary}</p>
+    {readyScopeNote ? <p>{readyScopeNote}</p> : null}
+    <div className="mini-grid beginner-step-grid">
+      <span><strong>Local model</strong>{localCount ? `${localCount} ready` : 'missing'}</span>
+      <span><strong>Cloud model</strong>{cloudCount ? `${cloudCount} configured` : 'missing'}</span>
+      <span><strong>Cost guard</strong>{pricedCloudCount ? `${formatCost(defaultComparisonMaxCostUsd)} cap` : unpricedCloudCount ? 'needs pricing' : 'waiting'}</span>
+      <span><strong>Benchmark</strong>{packLabel}</span>
+    </div>
+    <div className="row-actions">
+      {canLaunch ? <button disabled={busy} title="Validate models and start the recommended local/cloud benchmark now" onClick={onLaunch}><Play size={14} />{busy ? 'Starting' : 'Launch comparison'}</button> : null}
+      {canLaunch ? <button disabled={busy} title="Use the recommended setup without starting yet" onClick={onUseBuilder}><SlidersHorizontal size={14} />Review settings</button> : null}
+      {missingLocal ? <button disabled={busy} title="Detect Ollama, LM Studio, llama.cpp, vLLM, or MLX endpoints" onClick={onAddLocalTarget}><Search size={14} />Detect local app</button> : null}
+      {missingLocal ? <button disabled={busy} title="Search, download, start, and benchmark a Hugging Face GGUF model" onClick={onAddHfLocalModel}><Download size={14} />Download local model</button> : null}
+      {missingCloud ? <button disabled={busy} title="Save a provider key and choose a priced cloud model preset" onClick={onAddCloudTarget}><Database size={14} />Add cloud model</button> : null}
+      {needsPricing ? <button disabled={busy} title="Add input/output pricing so capped paid runs can be estimated" onClick={onRepairPricing}><Pencil size={14} />Add pricing</button> : null}
+    </div>
+  </div>;
 }
 
 function PackRunReadiness({ pack, docker }: { pack: BenchmarkPack; docker: boolean }) {
