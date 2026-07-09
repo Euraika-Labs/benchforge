@@ -10235,6 +10235,11 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
     openTargetSetup({ adapterId: cloudSetupAdapterId, code: 'missing_key', benchmarkPackId: autoBenchmarkPackId, targetIds: settingsComparisonTargets.setupLocalTargetIds });
   }
 
+  function useLocalOnlyHandoff() {
+    setAutoCompareAfterStart(false);
+    setMessage(`Automatic handoff will run ${benchmarkPackLabel(autoBenchmarkPackId, modelBenchmarkPacks)} locally only. Add a priced cloud target later to compare the same pack.`);
+  }
+
   useEffect(() => {
     if (!setupIntent) {
       return;
@@ -11078,6 +11083,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
           </label>
           {autoBenchmarkAfterStart && autoCompareAfterStart && !selectablePricedCloudTargetCount ? <div className="handoff-remedy">
             <span className="mini-tag warn">{selectableCloudTargetCount ? 'pricing needed' : 'cloud target needed'}</span>
+            <button type="button" title="Run the selected benchmark on the local model now; cloud comparison can be added later" onClick={useLocalOnlyHandoff}><Play size={14} />Local only</button>
             <button type="button" title={cloudComparisonActionTitle} onClick={openCloudComparisonSetup}>{cloudComparisonNeedsPricing ? <Pencil size={14} /> : <Boxes size={14} />}{cloudComparisonActionLabel}</button>
           </div> : null}
           {selectablePricedCloudTargets.length ? <label>Cloud target <select value={selectedAutoCompareCloudTarget?.id ?? ''} disabled={!autoBenchmarkAfterStart || !autoCompareAfterStart} onChange={event => setAutoCompareCloudTargetId(event.target.value)}>
@@ -11133,7 +11139,7 @@ function SettingsPage({ busy, targets, adapters, packs, setBusy, setMessage, ref
       </div>
       {downloadPlan ? <div className={`preflight-box ${downloadPlan.alreadyDownloaded ? 'ok' : downloadFailed ? 'warn' : ''}`}><strong>Download plan</strong><p>{downloadPlan.summary}</p><div className="mini-grid"><span>{downloadPlan.plannedBytes ? formatBytes(downloadPlan.plannedBytes) : 'size unknown'}</span><span>{downloadPlan.existingBytes ? `${formatBytes(downloadPlan.existingBytes)} local` : 'no complete local file'}</span><span>{downloadPlan.partialBytes ? `${formatBytes(downloadPlan.partialBytes)} partial` : 'no partial fragments'}</span><span>{downloadPlan.alreadyDownloaded ? 'already downloaded' : 'needs transfer'}</span></div><p className="muted">{downloadPlan.diskCheck} {downloadPlan.retryHint}</p><p className="muted">{downloadPlan.localDir}</p></div> : null}
       {autoBenchmarkAfterStart && autoCompareAfterStart && !autoCompareReady ? <div className="preflight-box warn">
-        <div className="panel-head"><h2>Cloud comparison</h2><button title={cloudComparisonActionTitle} onClick={openCloudComparisonSetup}>{cloudComparisonNeedsPricing ? <Pencil size={14} /> : <Boxes size={14} />}{cloudComparisonActionLabel}</button></div>
+        <div className="panel-head"><h2>Cloud comparison</h2><div className="actions"><button title="Run the selected benchmark on the local model now; cloud comparison can be added later" onClick={useLocalOnlyHandoff}><Play size={14} />Local only</button><button title={cloudComparisonActionTitle} onClick={openCloudComparisonSetup}>{cloudComparisonNeedsPricing ? <Pencil size={14} /> : <Boxes size={14} />}{cloudComparisonActionLabel}</button></div></div>
         <p>{cloudComparisonStatus} The local model flow will still create a target and run the selected pack locally.</p>
       </div> : null}
       {downloadProgress ? <DownloadProgressPanel progress={downloadProgress} /> : null}

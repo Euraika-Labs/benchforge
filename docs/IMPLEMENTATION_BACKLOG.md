@@ -64,7 +64,7 @@ Acceptance:
 
 - detect codex, claude, vibe, copilot;
 - show install remediation when missing.
-- status: implemented with optional severity and remediation text; direct install buttons are not implemented.
+- status: implemented with optional severity and remediation text; local runtime and external harness presets now expose allowlisted check/install actions where safe, while app-specific/manual installers remain documented rather than executed blindly.
 
 ### BF-022 Endpoint checks
 
