@@ -9781,6 +9781,10 @@ fn worker_import_reproducibility(event: &serde_json::Value) -> Option<serde_json
         "file_count": event.get("import_files").cloned().unwrap_or(serde_json::Value::Null),
         "total_file_count": event.get("import_total_files").cloned().unwrap_or(serde_json::Value::Null),
         "omitted_file_count": event.get("import_omitted_files").cloned().unwrap_or(serde_json::Value::Null),
+        "omitted_files": event.get("import_omitted_file_names").cloned().unwrap_or(serde_json::Value::Null),
+        "omitted_formats": event.get("import_omitted_formats").cloned().unwrap_or(serde_json::Value::Null),
+        "omitted_structured_file_count": event.get("import_omitted_structured_file_count").cloned().unwrap_or(serde_json::Value::Null),
+        "omitted_structured_files": event.get("import_omitted_structured_files").cloned().unwrap_or(serde_json::Value::Null),
         "unsupported_file_count": event.get("import_unsupported_file_count").cloned().unwrap_or(serde_json::Value::Null),
         "unsupported_files": event.get("import_unsupported_files").cloned().unwrap_or(serde_json::Value::Null),
         "truncated": event.get("import_truncated").cloned().unwrap_or(serde_json::Value::Null),
@@ -9789,6 +9793,11 @@ fn worker_import_reproducibility(event: &serde_json::Value) -> Option<serde_json
             .pointer("/tests/summary_source")
             .cloned()
             .or_else(|| event.pointer("/metrics/summary_source").cloned())
+            .unwrap_or(serde_json::Value::Null),
+        "summary_mode": event
+            .pointer("/tests/summary_mode")
+            .cloned()
+            .or_else(|| event.pointer("/metrics/summary_mode").cloned())
             .unwrap_or(serde_json::Value::Null),
     }))
 }

@@ -61,8 +61,10 @@ SECRET_FLAG_RE = re.compile(
 BEARER_RE = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{16,}")
 IMPORT_FILE_SUFFIXES = {".csv", ".json", ".jsonl", ".log", ".out", ".txt", ".xml"}
 TEXT_IMPORT_SUFFIXES = {".log", ".out", ".txt"}
+STRUCTURED_IMPORT_SUFFIXES = IMPORT_FILE_SUFFIXES - TEXT_IMPORT_SUFFIXES
 MAX_IMPORT_BYTES = 3_000_000
 MAX_IMPORT_FILES = 50
+MAX_OMITTED_IMPORT_FILE_NAMES = 25
 MAX_UNSUPPORTED_IMPORT_FILE_NAMES = 25
 RESULT_COLLECTION_KEYS = [
     "results",
@@ -600,6 +602,10 @@ def run_imported_result(
     result["import_files"] = metadata["file_count"]
     result["import_total_files"] = metadata["total_file_count"]
     result["import_omitted_files"] = metadata["omitted_file_count"]
+    result["import_omitted_file_names"] = metadata["omitted_files"]
+    result["import_omitted_formats"] = metadata["omitted_formats"]
+    result["import_omitted_structured_file_count"] = metadata["omitted_structured_file_count"]
+    result["import_omitted_structured_files"] = metadata["omitted_structured_files"]
     result["import_unsupported_file_count"] = metadata["unsupported_file_count"]
     result["import_unsupported_files"] = metadata["unsupported_files"]
     result["import_truncated"] = metadata["truncated"]
@@ -607,6 +613,7 @@ def run_imported_result(
     result["metrics"]["import_file_count"] = metadata["file_count"]
     result["metrics"]["import_total_file_count"] = metadata["total_file_count"]
     result["metrics"]["import_omitted_file_count"] = metadata["omitted_file_count"]
+    result["metrics"]["import_omitted_structured_file_count"] = metadata["omitted_structured_file_count"]
     result["metrics"]["import_unsupported_file_count"] = metadata["unsupported_file_count"]
     result["metrics"]["import_truncated"] = 1 if metadata["truncated"] else 0
     result["metrics"]["import_truncated_bytes"] = metadata["truncated_bytes"]
@@ -628,13 +635,17 @@ def read_imported_output(path: Path) -> tuple[str, dict[str, Any]]:
             1,
             read_file_count=1,
             omitted_file_count=0,
+            omitted_files=[],
+            omitted_formats=[],
+            omitted_structured_file_count=0,
+            omitted_structured_files=[],
             unsupported_file_count=0,
             unsupported_files=[],
             truncated_bytes=read_detail["truncated_bytes"],
             file_details=[import_file_detail(path, path, read_detail)],
         )
-    files, total_file_count, unsupported_file_count, unsupported_files = imported_files_with_stats(
-        path
+    files, total_file_count, unsupported_file_count, unsupported_files, cap_omitted_files = (
+        imported_files_with_stats(path)
     )
     if not files:
         raise HarnessConfigError(
@@ -655,7 +666,8 @@ def read_imported_output(path: Path) -> tuple[str, dict[str, Any]]:
         file_details.append(import_file_detail(path, item, read_detail))
         remaining_bytes -= int(read_detail["read_bytes"])
         truncated_bytes += int(read_detail["truncated_bytes"])
-    omitted_file_count = max(0, total_file_count - len(read_files))
+    omitted_paths = files[len(read_files):] + cap_omitted_files
+    omitted_file_count = len(omitted_paths)
     if omitted_file_count:
         chunks.append(f"[omitted {omitted_file_count} supported result file(s) after import limits]")
     if unsupported_file_count:
@@ -670,6 +682,16 @@ def read_imported_output(path: Path) -> tuple[str, dict[str, Any]]:
         total_file_count,
         read_file_count=len(read_files),
         omitted_file_count=omitted_file_count,
+        omitted_files=visible_import_paths(path, omitted_paths, MAX_OMITTED_IMPORT_FILE_NAMES),
+        omitted_formats=sorted({import_format_for_path(item) for item in omitted_paths}),
+        omitted_structured_file_count=sum(
+            1 for item in omitted_paths if item.suffix.lower() in STRUCTURED_IMPORT_SUFFIXES
+        ),
+        omitted_structured_files=visible_import_paths(
+            path,
+            [item for item in omitted_paths if item.suffix.lower() in STRUCTURED_IMPORT_SUFFIXES],
+            MAX_OMITTED_IMPORT_FILE_NAMES,
+        ),
         unsupported_file_count=unsupported_file_count,
         unsupported_files=unsupported_files,
         truncated_bytes=truncated_bytes,
@@ -694,6 +716,10 @@ def import_metadata(
     *,
     read_file_count: int,
     omitted_file_count: int,
+    omitted_files: list[str],
+    omitted_formats: list[str],
+    omitted_structured_file_count: int,
+    omitted_structured_files: list[str],
     unsupported_file_count: int,
     unsupported_files: list[str],
     truncated_bytes: int,
@@ -711,6 +737,10 @@ def import_metadata(
         "read_file_count": read_file_count,
         "total_file_count": total_file_count,
         "omitted_file_count": omitted_file_count,
+        "omitted_files": omitted_files,
+        "omitted_formats": omitted_formats,
+        "omitted_structured_file_count": omitted_structured_file_count,
+        "omitted_structured_files": omitted_structured_files,
         "unsupported_file_count": unsupported_file_count,
         "unsupported_files": unsupported_files,
         "truncated": truncated_bytes > 0 or omitted_file_count > 0,
@@ -736,15 +766,16 @@ def import_file_detail(root: Path, path: Path, read_detail: dict[str, Any]) -> d
 
 
 def imported_files(path: Path) -> list[Path]:
-    files, _, _, _ = imported_files_with_stats(path)
+    files, _, _, _, _ = imported_files_with_stats(path)
     return files
 
 
-def imported_files_with_stats(path: Path) -> tuple[list[Path], int, int, list[str]]:
+def imported_files_with_stats(path: Path) -> tuple[list[Path], int, int, list[str], list[Path]]:
     if path.is_file():
-        return [path], 1, 0, []
+        return [path], 1, 0, [], []
     root = path.resolve()
     files: list[Path] = []
+    omitted_files: list[Path] = []
     total_file_count = 0
     unsupported_file_count = 0
     unsupported_files: list[str] = []
@@ -772,7 +803,16 @@ def imported_files_with_stats(path: Path) -> tuple[list[Path], int, int, list[st
         total_file_count += 1
         if len(files) < MAX_IMPORT_FILES:
             files.append(item)
-    return files, total_file_count, unsupported_file_count, unsupported_files
+        else:
+            omitted_files.append(item)
+    return files, total_file_count, unsupported_file_count, unsupported_files, omitted_files
+
+
+def visible_import_paths(root: Path, files: list[Path], limit: int) -> list[str]:
+    return [
+        str(item.relative_to(root)) if root.is_dir() else item.name
+        for item in files[:limit]
+    ]
 
 
 def import_file_sort_key(root: Path, path: Path) -> tuple[int, str]:
@@ -833,7 +873,11 @@ def status_from_import_summary(summary: dict[str, Any], score: float | None) -> 
 def imported_summary_is_partial(summary: dict[str, Any], metadata: dict[str, Any]) -> bool:
     if not metadata.get("truncated"):
         return False
-    return summary.get("summary_source") in {"text", "json_items"}
+    if summary.get("summary_source") in {"text", "json_items"}:
+        return True
+    if int(metadata.get("omitted_structured_file_count") or 0) > 0:
+        return summary.get("summary_mode") != "aggregate"
+    return False
 
 
 def path_is_relative_to(path: Path, root: Path) -> bool:
@@ -1002,25 +1046,30 @@ def parse_harness_summary(raw_output: str) -> dict[str, Any]:
         if summary:
             summary["raw"] = raw_output[-4000:]
             summary["summary_source"] = "json"
+            summary.setdefault("summary_mode", "aggregate")
             return summary
     aggregate = summary_from_result_items(candidates)
     if aggregate:
         aggregate["raw"] = raw_output[-4000:]
         aggregate["summary_source"] = "json_items"
+        aggregate["summary_mode"] = "items"
         return aggregate
     csv_summary = summary_from_csv(raw_output)
     if csv_summary:
         csv_summary["raw"] = raw_output[-4000:]
         csv_summary["summary_source"] = "csv"
+        csv_summary.setdefault("summary_mode", "aggregate")
         return csv_summary
     xml_summary = summary_from_junit_xml(raw_output)
     if xml_summary:
         xml_summary["raw"] = raw_output[-4000:]
         xml_summary["summary_source"] = "junit_xml"
+        xml_summary["summary_mode"] = "items"
         return xml_summary
     summary = summary_from_text(raw_output)
     summary["raw"] = raw_output[-4000:]
     summary["summary_source"] = "text"
+    summary["summary_mode"] = "text"
     return summary
 
 
@@ -1051,6 +1100,7 @@ def summary_from_json(value: Any) -> dict[str, Any] | None:
 
     direct = summary_from_count_mapping(value)
     if direct and summary_has_counts(direct):
+        direct["summary_mode"] = "aggregate"
         return direct
 
     score = direct.get("score") if direct else None
@@ -1062,14 +1112,20 @@ def summary_from_json(value: Any) -> dict[str, Any] | None:
         if nested_summary and nested_summary.get("score") is not None and score is None:
             score = nested_summary.get("score")
         if nested_summary and summary_has_counts(nested_summary):
-            return merge_summary_score(nested_summary, score)
+            merged = merge_summary_score(nested_summary, score)
+            merged["summary_mode"] = "aggregate"
+            return merged
 
     for key in RESULT_COLLECTION_KEYS:
         nested = value.get(key)
         nested_summary = summary_from_collection(nested)
         if nested_summary:
-            return merge_summary_score(nested_summary, score)
+            merged = merge_summary_score(nested_summary, score)
+            merged.setdefault("summary_mode", "items")
+            return merged
 
+    if direct:
+        direct["summary_mode"] = "aggregate"
     return direct
 
 
@@ -1161,6 +1217,9 @@ def summary_from_csv(text: str) -> dict[str, Any] | None:
         "passed": passed,
         "failed": failed,
         "score": passed / total if total else None,
+        "summary_mode": "aggregate"
+        if all(summary.get("summary_mode") == "aggregate" for summary in counted)
+        else "items",
     }
 
 
@@ -1219,8 +1278,12 @@ def summary_from_csv_block(text: str) -> dict[str, Any] | None:
     for row in rows:
         direct = summary_from_count_mapping(row)
         if direct and summary_has_counts(direct):
+            direct["summary_mode"] = "aggregate"
             return direct
-    return summary_from_result_items(rows)
+    summary = summary_from_result_items(rows)
+    if summary:
+        summary["summary_mode"] = "items"
+    return summary
 
 
 def normalized_csv_row(row: dict[str | None, str | None]) -> dict[str, Any]:
@@ -1553,6 +1616,7 @@ def finish_event(
         "failed": summary.get("failed"),
         "raw": summary.get("raw", ""),
         "summary_source": summary.get("summary_source"),
+        "summary_mode": summary.get("summary_mode"),
     }
     artifacts = []
     if raw_output_path is not None:
@@ -1573,6 +1637,7 @@ def finish_event(
             "passed_tests": summary.get("passed"),
             "failed_tests": summary.get("failed"),
             "summary_source": summary.get("summary_source"),
+            "summary_mode": summary.get("summary_mode"),
         },
         "tests": tests,
         "artifacts": artifacts,

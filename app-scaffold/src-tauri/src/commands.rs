@@ -5109,6 +5109,10 @@ fn worker_imports_json(results: &[store::ResultRecord]) -> Vec<serde_json::Value
                 "file_count": result.import_file_count.or_else(|| import.get("file_count").and_then(|value| value.as_f64())),
                 "total_file_count": result.import_total_file_count.or_else(|| import.get("total_file_count").and_then(|value| value.as_f64())),
                 "omitted_file_count": result.import_omitted_file_count.or_else(|| import.get("omitted_file_count").and_then(|value| value.as_f64())),
+                "omitted_files": import.get("omitted_files").cloned().unwrap_or_else(|| serde_json::json!([])),
+                "omitted_formats": import.get("omitted_formats").cloned().unwrap_or_else(|| serde_json::json!([])),
+                "omitted_structured_file_count": import.get("omitted_structured_file_count").and_then(|value| value.as_f64()).unwrap_or(0.0),
+                "omitted_structured_files": import.get("omitted_structured_files").cloned().unwrap_or_else(|| serde_json::json!([])),
                 "unsupported_file_count": result.import_unsupported_file_count.or_else(|| import.get("unsupported_file_count").and_then(|value| value.as_f64())),
                 "unsupported_files": import.get("unsupported_files").cloned().unwrap_or_else(|| serde_json::json!([])),
                 "truncated": result.import_truncated
@@ -5117,6 +5121,7 @@ fn worker_imports_json(results: &[store::ResultRecord]) -> Vec<serde_json::Value
                 "truncated_metric": result.import_truncated,
                 "truncated_bytes": result.import_truncated_bytes.or_else(|| import.get("truncated_bytes").and_then(|value| value.as_f64())),
                 "summary_source": worker_import_string(import, "summary_source", result.summary_source.as_deref().unwrap_or("-")),
+                "summary_mode": worker_import_string(import, "summary_mode", "-"),
                 "worker_import": result.reproducibility.get("worker_import").cloned().unwrap_or(serde_json::Value::Null)
             })
         })
@@ -5209,6 +5214,13 @@ fn worker_import_file_counts(result: &store::ResultRecord, import: &serde_json::
     }
     if let Some(count) = omitted_file_count {
         parts.push(format!("omitted {}", count));
+    }
+    if let Some(count) = import
+        .get("omitted_structured_file_count")
+        .and_then(|value| value.as_u64())
+        .filter(|count| *count > 0)
+    {
+        parts.push(format!("structured omitted {}", count));
     }
     if let Some(count) = result
         .import_unsupported_file_count
@@ -19214,11 +19226,16 @@ mod tests {
             "file_count": 2,
             "total_file_count": 5,
             "omitted_file_count": 3,
+            "omitted_files": ["cases-003.xml", "cases-004.xml", "debug.log"],
+            "omitted_formats": ["junit_xml", "text"],
+            "omitted_structured_file_count": 2,
+            "omitted_structured_files": ["cases-003.xml", "cases-004.xml"],
             "unsupported_file_count": 2,
             "unsupported_files": ["notes.md", "screenshots/chart.png"],
             "truncated": true,
             "truncated_bytes": 4096,
-            "summary_source": "junit_xml"
+            "summary_source": "junit_xml",
+            "summary_mode": "items"
         });
 
         let jsonl = results_jsonl(&[imported.clone()]);
@@ -19249,7 +19266,7 @@ mod tests {
         assert!(report.contains("| Import truncated | 1 | 0 | Set by worker imports to show whether imported result evidence was truncated or partially bounded. |"));
         assert!(report.contains("| run-impo | group-al | worker-target | OpenAI-compatible | llm-core | llm-core-json-001 | passed | - | - | - | - | junit_xml | directory | 2 | 5 | 3 | 2 | 1 | 4096 | junit_xml |"));
         assert!(report.contains("## Worker Imports"));
-        assert!(report.contains("| run-impo | group-al | llm-core | llm-core-json-001 | worker-target | directory | /tmp/benchforge/results,latest | junit_xml | read 2; total 5; omitted 3; unsupported 2 | summary.xml, latest/results.xml | summary.xml sha256:aaaaaaaaaaaa, latest/results.xml read-sha256:bbbbbbbbbbbb | yes (4096 bytes) | junit_xml |"));
+        assert!(report.contains("| run-impo | group-al | llm-core | llm-core-json-001 | worker-target | directory | /tmp/benchforge/results,latest | junit_xml | read 2; total 5; omitted 3; structured omitted 2; unsupported 2 | summary.xml, latest/results.xml | summary.xml sha256:aaaaaaaaaaaa, latest/results.xml read-sha256:bbbbbbbbbbbb | yes (4096 bytes) | junit_xml |"));
 
         let analysis: serde_json::Value = serde_json::from_str(
             &results_analysis_json(&[imported]).expect("analysis export should serialize"),
@@ -19266,12 +19283,17 @@ mod tests {
         assert_eq!(imports[0]["file_count"], 2.0);
         assert_eq!(imports[0]["total_file_count"], 5.0);
         assert_eq!(imports[0]["omitted_file_count"], 3.0);
+        assert_eq!(imports[0]["omitted_files"][2], "debug.log");
+        assert_eq!(imports[0]["omitted_formats"][0], "junit_xml");
+        assert_eq!(imports[0]["omitted_structured_file_count"], 2.0);
+        assert_eq!(imports[0]["omitted_structured_files"][1], "cases-004.xml");
         assert_eq!(imports[0]["unsupported_file_count"], 2.0);
         assert_eq!(imports[0]["unsupported_files"][0], "notes.md");
         assert_eq!(imports[0]["truncated"], true);
         assert_eq!(imports[0]["truncated_metric"], 1.0);
         assert_eq!(imports[0]["truncated_bytes"], 4096.0);
         assert_eq!(imports[0]["summary_source"], "junit_xml");
+        assert_eq!(imports[0]["summary_mode"], "items");
         assert_eq!(
             imports[0]["worker_import"]["unsupported_files"][1],
             "screenshots/chart.png"

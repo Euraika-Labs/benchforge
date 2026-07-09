@@ -88,8 +88,16 @@ class HarnessRunnerTests(unittest.TestCase):
         self.assertEqual(event["import_source"], import_source)
         self.assertEqual(event["import_files"], import_files)
         self.assertEqual(len(event["import_read_files"]), import_files)
+        self.assertIn("import_omitted_file_names", event)
+        self.assertIn("import_omitted_formats", event)
+        self.assertIn("import_omitted_structured_file_count", event)
+        self.assertIn("import_omitted_structured_files", event)
         self.assertIn("import_unsupported_file_count", event)
         self.assertIn("import_unsupported_files", event)
+        self.assertEqual(
+            event["metrics"].get("import_omitted_structured_file_count"),
+            event["import_omitted_structured_file_count"],
+        )
         self.assertEqual(event["metrics"].get("import_unsupported_file_count"), event["import_unsupported_file_count"])
         self.assertEqual(event["import_hash_algorithm"], "sha256")
         self.assertEqual(len(event["import_file_details"]), import_files)
@@ -103,6 +111,8 @@ class HarnessRunnerTests(unittest.TestCase):
         self.assertEqual(event["metrics"]["import_source"], import_source)
         self.assertEqual(event["metrics"]["import_file_count"], import_files)
         self.assertEqual(event["metrics"]["summary_source"], summary_source)
+        self.assertIn("summary_mode", event["metrics"])
+        self.assertIn("summary_mode", event["tests"])
         self.assertEqual(event["metrics"]["commands_observed_count"], 0)
         self.assertEqual(event["tests"]["summary_source"], summary_source)
 
@@ -804,6 +814,97 @@ class HarnessRunnerTests(unittest.TestCase):
             self.assertGreater(event["metrics"]["import_truncated_bytes"], 0)
             raw_output = Path(event["artifacts"][0]["path"]).read_text(encoding="utf-8")
             self.assertLess(raw_output.index("summary.json"), raw_output.index("a-large.log"))
+
+    def test_worker_rejects_directory_import_when_structured_case_files_are_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            imports = temp_dir / "imports"
+            imports.mkdir()
+            for index in range(55):
+                (imports / f"case-{index:03}.csv").write_text(
+                    f"case,resolved\nrepo__{index},true\n",
+                    encoding="utf-8",
+                )
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "swebench",
+                "--import-path",
+                str(imports),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 2, completed.stderr)
+            event = self.final_event(output)
+            self.assert_import_metadata(
+                event,
+                import_format="csv",
+                import_source="directory",
+                import_files=50,
+                summary_source="csv",
+            )
+            self.assertEqual(event["tests"]["summary_mode"], "items")
+            self.assertTrue(event["import_truncated"])
+            self.assertEqual(event["import_total_files"], 55)
+            self.assertEqual(event["import_omitted_files"], 5)
+            self.assertEqual(event["import_omitted_formats"], ["csv"])
+            self.assertEqual(event["import_omitted_structured_file_count"], 5)
+            self.assertIn("case-050.csv", event["import_omitted_structured_files"])
+            self.assertEqual(event["status"], "error")
+            self.assertIsNone(event["score"])
+            self.assertEqual(event["error_code"], "result_import_truncated")
+            self.assertIn("complete aggregate summary", event["error_message"])
+
+    def test_worker_allows_aggregate_summary_when_only_logs_are_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_dir:
+            temp_dir = Path(raw_dir)
+            imports = temp_dir / "imports"
+            imports.mkdir()
+            (imports / "summary.json").write_text(
+                json.dumps({"total": 10, "passed": 10, "failed": 0, "score": 1.0}) + "\n",
+                encoding="utf-8",
+            )
+            for index in range(55):
+                (imports / f"log-{index:03}.log").write_text(
+                    f"verbose harness output {index}\n",
+                    encoding="utf-8",
+                )
+            output = temp_dir / "worker.jsonl"
+
+            completed = self.run_worker(
+                temp_dir,
+                "--kind",
+                "terminal-bench",
+                "--import-path",
+                str(imports),
+                "--workspace",
+                str(temp_dir),
+                "--output",
+                str(output),
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            event = self.final_event(output)
+            self.assert_import_metadata(
+                event,
+                import_format="mixed",
+                import_source="directory",
+                import_files=50,
+                summary_source="json",
+            )
+            self.assertEqual(event["tests"]["summary_mode"], "aggregate")
+            self.assertEqual(event["status"], "passed")
+            self.assertEqual(event["score"], 1.0)
+            self.assertTrue(event["import_truncated"])
+            self.assertEqual(event["import_total_files"], 56)
+            self.assertEqual(event["import_omitted_files"], 6)
+            self.assertEqual(event["import_omitted_formats"], ["text"])
+            self.assertEqual(event["import_omitted_structured_file_count"], 0)
 
     def test_worker_imports_csv_summary_result(self) -> None:
         with tempfile.TemporaryDirectory() as raw_dir:
