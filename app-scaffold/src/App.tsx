@@ -146,6 +146,7 @@ interface TargetRepairIntent {
 interface TargetSetupIntent {
   adapterId?: string;
   benchmarkPackId?: string;
+  targetIds?: string[];
   code: string;
   nonce: number;
 }
@@ -1368,6 +1369,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
   const [cacheWritePrice, setCacheWritePrice] = useState('');
   const [autoBenchmarkAfterAdd, setAutoBenchmarkAfterAdd] = useState(true);
   const [autoBenchmarkPackId, setAutoBenchmarkPackId] = useState(defaultModelComparisonPackId);
+  const [autoBenchmarkTargetIds, setAutoBenchmarkTargetIds] = useState<string[]>([]);
   const [comparisonPackId, setComparisonPackId] = useState(defaultModelComparisonPackId);
   const [cloudModelQuery, setCloudModelQuery] = useState('');
   const [cloudModels, setCloudModels] = useState<CloudModel[]>([]);
@@ -1493,10 +1495,11 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     const setupBenchmarkPackId = resolveModelBenchmarkPackId(setupIntent.benchmarkPackId, modelBenchmarkPacks, packs);
     if (setupIntent.code === 'local_runtime_detect') {
       onSetupIntentConsumed();
-      clearTargetForm();
+      clearTargetForm({ preserveAutoBenchmarkScope: true });
       clearHarnessForm();
       setAutoBenchmarkAfterAdd(true);
       setAutoBenchmarkPackId(setupBenchmarkPackId);
+      setAutoBenchmarkTargetIds(uniqueIdsInOrder(setupIntent.targetIds ?? []));
       setComparisonPackId(setupBenchmarkPackId);
       setMessage(`Detecting local runtimes. Automatic benchmark after add will use ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)}.`);
       void detectLocal().catch(error => setMessage(String(error)));
@@ -1516,10 +1519,11 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       setMessage(`Cloud adapter ${setupIntent.adapterId} is not available in Targets`);
       return;
     }
-    clearTargetForm();
+    clearTargetForm({ preserveAutoBenchmarkScope: true });
     clearHarnessForm();
     setAutoBenchmarkAfterAdd(true);
     setAutoBenchmarkPackId(setupBenchmarkPackId);
+    setAutoBenchmarkTargetIds(uniqueIdsInOrder(setupIntent.targetIds ?? []));
     setComparisonPackId(setupBenchmarkPackId);
     const defaultPreset = selectAdapter(adapter.id, { prefillFirstPreset: true });
     const presetHint = defaultPreset
@@ -1769,7 +1773,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setMessage(`Selected ${nextModel.model}`);
   }
 
-  function clearTargetForm() {
+  function clearTargetForm(options: { preserveAutoBenchmarkScope?: boolean } = {}) {
     const adapter = selectedAdapter ?? runnableAdapters[0];
     setEditingTargetId('');
     setTargetName('');
@@ -1790,6 +1794,9 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     setCloudModels([]);
     setSelectedCloudModel(null);
     setTargetAdvancedOpen(false);
+    if (!options.preserveAutoBenchmarkScope) {
+      setAutoBenchmarkTargetIds([]);
+    }
     if (adapter) {
       const defaultPreset = applyFirstModelPreset(adapter);
       if (defaultPreset) {
@@ -1832,6 +1839,9 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         return;
       }
       const config = exported.config ?? {};
+      if (!options.pendingAutoBenchmarkPackId) {
+        setAutoBenchmarkTargetIds([]);
+      }
       const modelValue = formValueFromUnknown(config.model);
       const inputPriceValue = formValueFromUnknown(config.input_price_usd_per_million_tokens);
       const outputPriceValue = formValueFromUnknown(config.output_price_usd_per_million_tokens);
@@ -2098,7 +2108,8 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
     };
     const packId = autoBenchmarkPackId || connectivityBenchmarkPackId;
     const plannedTarget = plannedModelTarget(id, name, runtime.adapterId, runtime.baseUrl);
-    const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targets, packId);
+    const targetUniverse = targetListWithOverride(plannedTarget, targets);
+    const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
     const handoff = await createTargetWithBenchmarkHandoff(
       targetRequest,
       autoBenchmarkAfterAdd
@@ -2271,9 +2282,10 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         cacheReadPriceUsdPerMillionTokens: parsedCacheReadPrice.value,
         cacheWritePriceUsdPerMillionTokens: parsedCacheWritePrice.value,
       });
-      const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targets, packId);
+      const targetUniverse = targetListWithOverride(plannedTarget, targets);
+      const benchmarkIntent = automaticModelBenchmarkIntentForTarget(plannedTarget, targetUniverse, packId, autoBenchmarkTargetIds);
       const autoBenchmarkNeedsPricing = autoBenchmarkAfterAdd
-        && cappedIntentHasUnpricedCloudTarget(benchmarkIntent, targetListWithOverride(plannedTarget, targets));
+        && cappedIntentHasUnpricedCloudTarget(benchmarkIntent, targetUniverse);
       const handoff = await createTargetWithBenchmarkHandoff(
         targetRequest,
         autoBenchmarkAfterAdd && !autoBenchmarkNeedsPricing
@@ -2360,9 +2372,10 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       if (options.runPendingAutoBenchmarkPackId && (target.kind === 'direct_model' || target.kind === 'harnessed_model')) {
         const packId = options.runPendingAutoBenchmarkPackId;
         const packLabel = benchmarkPackLabel(packId, modelBenchmarkPacks);
-        const intent = automaticModelBenchmarkIntentForTarget(target, targets, packId);
+        const targetUniverse = targetListWithOverride(target, targets);
+        const intent = automaticModelBenchmarkIntentForTarget(target, targetUniverse, packId, autoBenchmarkTargetIds);
         const scopeLabel = intent.targetIds.length > 1 ? 'local/cloud comparison' : 'benchmark';
-        if (cappedIntentHasUnpricedCloudTarget(intent, targetListWithOverride(target, targets))) {
+        if (cappedIntentHasUnpricedCloudTarget(intent, targetUniverse)) {
           await loadTargetForEdit(target, { pendingAutoBenchmarkPackId: packId });
           setMessage(`Target ${name} ${validationNote}. Add input/output pricing before BenchForge starts a capped ${packLabel} ${scopeLabel}.`);
           return;
@@ -2377,6 +2390,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
             intent.concurrency ?? 1,
             intent.maxCostUsd,
           );
+          setAutoBenchmarkTargetIds([]);
           await onRefresh();
           if (!isJobActive(job) && job.results.length) {
             openResultsForGroup(job.runGroupId, job.results[0]?.id);
@@ -2387,6 +2401,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
           setMessage(`Updated target ${name}; ${validationNote}. Queued capped ${packLabel} ${scopeLabel} job ${job.id.slice(0, 8)}`);
           return;
         } catch (error) {
+          setAutoBenchmarkTargetIds([]);
           openRunBuilder(intent);
           setMessage(`Updated target ${name}; ${validationNote}, but the automatic ${packLabel} ${scopeLabel} job could not start: ${benchmarkRunFailureMessage(error)}`);
           return;
@@ -2396,17 +2411,20 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         const comparisonPackId = recommendedComparisonPackId(packs);
         const comparisonIntent = modelComparisonIntentForTarget(target, targets, comparisonPackId, { requirePricedCloud: true });
         if (comparisonIntent) {
+          setAutoBenchmarkTargetIds([]);
           openRunBuilder(comparisonIntent);
           setMessage(`Updated target ${name}; ${validationNote}. Run Builder is ready to rerun the local/cloud ${benchmarkPackLabel(comparisonPackId, modelBenchmarkPacks)} comparison with 3 repetitions, 1 warmup, and ${formatCost(defaultComparisonMaxCostUsd)} cap`);
           return;
         }
       }
+      setAutoBenchmarkTargetIds([]);
       setMessage(`Updated target ${name}; ${validationNote}`);
       return;
     }
     const packId = options.pendingAutoBenchmarkPackId || autoBenchmarkPackId || connectivityBenchmarkPackId;
     const packLabel = benchmarkPackLabel(packId, modelBenchmarkPacks);
-    const intent = automaticModelBenchmarkIntentForTarget(target, targets, packId);
+    const targetUniverse = targetListWithOverride(target, targets);
+    const intent = automaticModelBenchmarkIntentForTarget(target, targetUniverse, packId, autoBenchmarkTargetIds);
     const scopeLabel = intent.targetIds.length > 1 ? 'local/cloud comparison' : 'benchmark';
     if (options.pendingAutoBenchmarkPackId) {
       await loadTargetForEdit(target, { pendingAutoBenchmarkPackId: options.pendingAutoBenchmarkPackId });
@@ -2414,16 +2432,19 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       return;
     }
     if (!autoBenchmarkAfterAdd) {
+      setAutoBenchmarkTargetIds([]);
       openRunBuilder(intent);
       setMessage(`Target ${name} ${validationNote} and ready in Runs`);
       return;
     }
     if (benchmarkError) {
+      setAutoBenchmarkTargetIds([]);
       openRunBuilder(intent);
       setMessage(`Target ${name} ${validationNote}, but the automatic ${packLabel} ${scopeLabel} job could not start: ${benchmarkRunFailureMessage(benchmarkError)}`);
       return;
     }
     if (prestartedJob) {
+      setAutoBenchmarkTargetIds([]);
       await onRefresh();
       if (!isJobActive(prestartedJob) && prestartedJob.results.length) {
         openResultsForGroup(prestartedJob.runGroupId, prestartedJob.results[0]?.id);
@@ -2444,6 +2465,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
         intent.concurrency ?? 1,
         intent.maxCostUsd,
       );
+      setAutoBenchmarkTargetIds([]);
       await onRefresh();
       if (!isJobActive(job) && job.results.length) {
         openResultsForGroup(job.runGroupId, job.results[0]?.id);
@@ -2453,6 +2475,7 @@ function Targets({ targets, adapters, packs, onRefresh, setMessage, openRunBuild
       openRunBuilder(intent);
       setMessage(`Target ${name} ${validationNote}; queued capped ${packLabel} ${scopeLabel} job ${job.id.slice(0, 8)}`);
     } catch (error) {
+      setAutoBenchmarkTargetIds([]);
       openRunBuilder(intent);
       setMessage(`Target ${name} ${validationNote}, but the automatic ${packLabel} ${scopeLabel} job could not start: ${benchmarkRunFailureMessage(error)}`);
     }
@@ -3341,6 +3364,8 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
   const selectedTargets = targets.filter(target => selected.includes(target.id));
   const selectedLocalTargets = selectedTargets.filter(target => isLocalModelTarget(target));
   const selectedCloudTargets = selectedTargets.filter(target => isCloudModelTarget(target));
+  const selectedLocalTargetIds = selectedLocalTargets.map(target => target.id);
+  const selectedCloudTargetIds = selectedCloudTargets.map(target => target.id);
   const comparisonDefaultsRecommended = Boolean(selectedPack && selectedLocalTargets.length && selectedCloudTargets.length && packUsesModelSelectionDefaults(selectedPack));
   const recommendedComparisonConcurrency = Math.min(2, Math.max(1, selectedTargets.length));
   const selectedPackSupportsModelComparison = Boolean(selectedPack?.taskTypes.includes('prompt') && selectedPack.supportedTargetKinds.includes('direct_model'));
@@ -3698,11 +3723,11 @@ function Runs({ targets, adapters, packs, busy, setBusy, setMessage, refresh, se
     setMessage(`Add input/output pricing before running a capped local/cloud comparison: ${previewList(targetIds)}`);
   }
   function openLocalSetupFromRunBuilder() {
-    openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: setupBenchmarkPackId });
+    openTargetSetup({ code: 'local_runtime_detect', benchmarkPackId: setupBenchmarkPackId, targetIds: selectedCloudTargetIds });
     setMessage(`Detecting local runtimes for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
   }
   function openCloudSetupFromRunBuilder() {
-    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: setupBenchmarkPackId });
+    openTargetSetup({ adapterId: preferredCloudSetupAdapterId(adapters), code: 'missing_key', benchmarkPackId: setupBenchmarkPackId, targetIds: selectedLocalTargetIds });
     setMessage(`Preparing cloud target setup for this ${benchmarkPackLabel(setupBenchmarkPackId, modelBenchmarkPacks)} local/cloud comparison`);
   }
   async function cancelRun(id: string) {
@@ -7878,9 +7903,46 @@ function automaticModelRunBuilderIntent(target: Target, benchmarkPackId: string)
   };
 }
 
-function automaticModelBenchmarkIntentForTarget(target: Target, targets: Target[], benchmarkPackId: string): RunBuilderIntent {
-  const comparisonIntent = modelComparisonIntentForTarget(target, targets, benchmarkPackId, { requirePricedCloud: true });
+function scopedModelBenchmarkTargetIdsForTarget(target: Target, targets: Target[], scopedTargetIds: string[], options: { requirePricedCloud?: boolean } = {}) {
+  if (!scopedTargetIds.length || !targetIsSelectableModel(target)) {
+    return null;
+  }
+  const targetIsLocal = isLocalModelTarget(target);
+  const targetIsCloud = isCloudModelTarget(target);
+  if (!targetIsLocal && !targetIsCloud) {
+    return null;
+  }
+  if (options.requirePricedCloud && targetIsCloud && !targetHasInputOutputPricing(target)) {
+    return null;
+  }
+  const targetById = new Map(targetListWithOverride(target, targets).map(candidate => [candidate.id, candidate]));
+  const counterparts = uniqueIdsInOrder(scopedTargetIds)
+    .filter(id => id !== target.id)
+    .map(id => targetById.get(id))
+    .filter((candidate): candidate is Target => Boolean(candidate))
+    .filter(candidate => targetIsSelectableModel(candidate))
+    .filter(candidate => targetIsLocal ? isCloudModelTarget(candidate) : isLocalModelTarget(candidate))
+    .filter(candidate => !options.requirePricedCloud || !isCloudModelTarget(candidate) || targetHasInputOutputPricing(candidate));
+  if (!counterparts.length) {
+    return null;
+  }
+  const counterpartIds = counterparts.map(candidate => candidate.id);
+  return targetIsLocal ? [target.id, ...counterpartIds] : [...counterpartIds, target.id];
+}
+
+function automaticModelBenchmarkIntentForTarget(target: Target, targets: Target[], benchmarkPackId: string, scopedTargetIds: string[] = []): RunBuilderIntent {
   const settings = automaticModelBenchmarkSettings(benchmarkPackId);
+  const scopedRunTargetIds = scopedModelBenchmarkTargetIdsForTarget(target, targets, scopedTargetIds, { requirePricedCloud: true });
+  if (scopedRunTargetIds) {
+    return {
+      ...localCloudRunBuilderIntent(scopedRunTargetIds, benchmarkPackId),
+      repetitions: settings.repetitions,
+      warmupRuns: settings.warmupRuns,
+      concurrency: Math.min(2, Math.max(1, scopedRunTargetIds.length)),
+      maxCostUsd: automaticModelBenchmarkMaxCostUsd(benchmarkPackId),
+    };
+  }
+  const comparisonIntent = modelComparisonIntentForTarget(target, targets, benchmarkPackId, { requirePricedCloud: true });
   if (comparisonIntent) {
     return {
       ...comparisonIntent,
